@@ -130,6 +130,7 @@ void CRRCSim::recv_fdm(const struct sitl_input &input)
     position.z = -pkt.altitude;
 
     airspeed = pkt.airspeed;
+    airspeed_pitot = pkt.airspeed;
 
     dcm.from_euler(pkt.roll, pkt.pitch, pkt.yaw);
 
@@ -151,6 +152,9 @@ void CRRCSim::update(const struct sitl_input &input)
     send_servos(input);
     recv_fdm(input);
     update_position();
+
+    // update magnetic field
+    update_mag_field_bf();
 }
 
 } // namespace SITL

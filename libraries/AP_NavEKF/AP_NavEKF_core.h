@@ -17,16 +17,23 @@
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#pragma once
 
-#ifndef AP_NavEKF_core
-#define AP_NavEKF_core
-
+#include <AP_HAL/AP_HAL.h>
 #include <AP_NavEKF/AP_NavEKF.h>
 
 #pragma GCC optimize("O3")
 
-// #define MATH_CHECK_INDEXES 1
-// #define EKF_DISABLE_INTERRUPTS 1
+/*
+  avoid a hang in the optimiser in clang++
+ */
+#if CONFIG_HAL_BOARD == HAL_BOARD_QURT
+#define OPT_MATHS __attribute__ ((optnone))
+#else
+#define OPT_MATHS
+#endif
+
+#define EKF_DISABLE_INTERRUPTS 0
 
 #include <AP_Math/vectorN.h>
 
@@ -48,7 +55,7 @@ public:
     friend class NavEKF;
     
     typedef float ftype;
-#if defined(MATH_CHECK_INDEXES) && (MATH_CHECK_INDEXES == 1)
+#if MATH_CHECK_INDEXES
     typedef VectorN<ftype,2> Vector2;
     typedef VectorN<ftype,3> Vector3;
     typedef VectorN<ftype,4> Vector4;
@@ -107,10 +114,15 @@ public:
     // Check basic filter health metrics and return a consolidated health status
     bool healthy(void) const;
 
-    // Return the last calculated NED position relative to the reference point (m).
+    // Write the last calculated NE position relative to the reference point (m).
     // If a calculated solution is not available, use the best available data and return false
     // If false returned, do not use for flight control
-    bool getPosNED(Vector3f &pos) const;
+    bool getPosNE(Vector2f &posNE) const;
+
+    // Write the last calculated D position relative to the reference point (m).
+    // If a calculated solution is not available, use the best available data and return false
+    // If false returned, do not use for flight control
+    bool getPosD(float &posD) const;
 
     // return NED velocity in m/s
     void getVelNED(Vector3f &vel) const;
@@ -165,7 +177,7 @@ public:
 
     // Return estimated magnetometer offsets
     // Return true if magnetometer offsets are valid
-    bool getMagOffsets(Vector3f &magOffsets) const;
+    bool getMagOffsets(uint8_t mag_idx, Vector3f &magOffsets) const;
 
     // Return the last calculated latitude, longitude and height in WGS-84
     // If a calculated location isn't available, return a raw GPS measurement
@@ -237,7 +249,7 @@ public:
      6 = badly conditioned synthetic sideslip fusion
      7 = filter is not initialised
     */
-    void  getFilterFaults(uint8_t &faults) const;
+    void  getFilterFaults(uint16_t &faults) const;
 
     /*
     return filter timeout status as a bitmasked integer
@@ -252,9 +264,7 @@ public:
     */
     void  getFilterTimeouts(uint8_t &timeouts) const;
 
-    /*
-    return filter status flags
-    */
+    // return filter status flags
     void  getFilterStatus(nav_filter_status &status) const;
 
     /*
@@ -316,6 +326,9 @@ private:
         float       posD2;          // 30
         Vector3f    omega;          // 31 .. 33
     } &state;
+
+    // update the navigation filter status
+    void  updateFilterStatus(void);
 
     // update the quaternion, velocity and position states using IMU measurements
     void UpdateStrapdownEquationsNED();
@@ -628,7 +641,7 @@ private:
     uint8_t storeIndex;             // State vector storage index
     uint32_t lastStateStoreTime_ms; // time of last state vector storage
     uint32_t lastFixTime_ms;        // time of last GPS fix used to determine if new data has arrived
-    uint32_t timeAtLastAuxEKF_ms;   // last time the auxilliary filter was run to fuse range or optical flow measurements
+    uint32_t timeAtLastAuxEKF_ms;   // last time the auxiliary filter was run to fuse range or optical flow measurements
     uint32_t secondLastFixTime_ms;  // time of second last GPS fix used to determine how long since last update
     uint32_t lastHealthyMagTime_ms; // time the magnetometer was last declared healthy
     uint32_t ekfStartTime_ms;       // time the EKF was started (msec)
@@ -690,6 +703,7 @@ private:
     Vector3f delAngBiasAtArming;    // value of the gyro delta angle bias at arming
     float hgtInnovFiltState;        // state used for fitering of the height innovations used for pre-flight checks
     Quaternion prevQuatMagReset;    // Quaternion from the previous frame that the magnetic field state reset condition test was performed
+    nav_filter_status filterStatus; // contains the status of various filter outputs
 
     // Used by smoothing of state corrections
     Vector10 gpsIncrStateDelta;    // vector of corrections to attitude, velocity and position to be applied over the period between the current and next GPS measurement
@@ -866,5 +880,3 @@ private:
     // vehicle specific initial gyro bias uncertainty
     float InitialGyroBiasUncertainty(void) const;
 };
-
-#endif // AP_NavEKF_core

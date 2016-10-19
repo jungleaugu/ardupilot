@@ -52,19 +52,19 @@ int8_t Rover::test_radio_pwm(uint8_t argc, const Menu::arg *argv)
 	while(1){
 		delay(20);
 
-		// Filters radio input - adjust filters in the radio.pde file
+		// Filters radio input - adjust filters in the radio.cpp file
 		// ----------------------------------------------------------
 		read_radio();
 
 		cliSerial->printf("IN:\t1: %d\t2: %d\t3: %d\t4: %d\t5: %d\t6: %d\t7: %d\t8: %d\n",
-							channel_steer->radio_in,
-							g.rc_2.radio_in,
-							channel_throttle->radio_in,
-							g.rc_4.radio_in,
-							g.rc_5.radio_in,
-							g.rc_6.radio_in,
-							g.rc_7.radio_in,
-							g.rc_8.radio_in);
+							channel_steer->get_radio_in(),
+							g.rc_2.get_radio_in(),
+							channel_throttle->get_radio_in(),
+							g.rc_4.get_radio_in(),
+							g.rc_5.get_radio_in(),
+							g.rc_6.get_radio_in(),
+							g.rc_7.get_radio_in(),
+							g.rc_8.get_radio_in());
 
 		if(cliSerial->available() > 0){
 			return (0);
@@ -119,14 +119,14 @@ int8_t Rover::test_radio(uint8_t argc, const Menu::arg *argv)
 		set_servos();
 
 		cliSerial->printf("IN 1: %d\t2: %d\t3: %d\t4: %d\t5: %d\t6: %d\t7: %d\t8: %d\n",
-							channel_steer->control_in,
-							g.rc_2.control_in,
-							channel_throttle->control_in,
-							g.rc_4.control_in,
-							g.rc_5.control_in,
-							g.rc_6.control_in,
-							g.rc_7.control_in,
-							g.rc_8.control_in);
+							channel_steer->get_control_in(),
+							g.rc_2.get_control_in(),
+							channel_throttle->get_control_in(),
+							g.rc_4.get_control_in(),
+							g.rc_5.get_control_in(),
+							g.rc_6.get_control_in(),
+							g.rc_7.get_control_in(),
+							g.rc_8.get_control_in());
 
 		if(cliSerial->available() > 0){
 			return (0);
@@ -136,7 +136,7 @@ int8_t Rover::test_radio(uint8_t argc, const Menu::arg *argv)
 
 int8_t Rover::test_failsafe(uint8_t argc, const Menu::arg *argv)
 {
-	uint8_t fail_test;
+	uint8_t fail_test = 0;
 	print_hit_enter();
 	for(int i = 0; i < 50; i++){
 		delay(20);
@@ -150,7 +150,7 @@ int8_t Rover::test_failsafe(uint8_t argc, const Menu::arg *argv)
 	oldSwitchPosition = readSwitch();
 
 	cliSerial->printf("Unplug battery, throttle in neutral, turn off radio.\n");
-	while(channel_throttle->control_in > 0){
+	while(channel_throttle->get_control_in() > 0){
 		delay(20);
 		read_radio();
 	}
@@ -159,8 +159,8 @@ int8_t Rover::test_failsafe(uint8_t argc, const Menu::arg *argv)
 		delay(20);
 		read_radio();
 
-		if(channel_throttle->control_in > 0){
-			cliSerial->printf("THROTTLE CHANGED %d \n", channel_throttle->control_in);
+		if(channel_throttle->get_control_in() > 0){
+			cliSerial->printf("THROTTLE CHANGED %d \n", channel_throttle->get_control_in());
 			fail_test++;
 		}
 
@@ -172,7 +172,7 @@ int8_t Rover::test_failsafe(uint8_t argc, const Menu::arg *argv)
 		}
 
         if(throttle_failsafe_active()) {
-			cliSerial->printf("THROTTLE FAILSAFE ACTIVATED: %d, ", channel_throttle->radio_in);
+			cliSerial->printf("THROTTLE FAILSAFE ACTIVATED: %d, ", channel_throttle->get_radio_in());
             print_mode(cliSerial, readSwitch());
             cliSerial->println();
 			fail_test++;
@@ -308,7 +308,8 @@ int8_t Rover::test_ins(uint8_t argc, const Menu::arg *argv)
 	//cliSerial->printf("Calibrating.");
 	ahrs.init();
     ahrs.set_fly_forward(true);
-	ins.init(ins_sample_rate);
+
+    ins.init(scheduler.get_loop_rate_hz());
     ahrs.reset();
 
 	print_hit_enter();
@@ -371,7 +372,7 @@ int8_t Rover::test_mag(uint8_t argc, const Menu::arg *argv)
     ahrs.set_compass(&compass);
 
     // we need the AHRS initialised for this test
-	ins.init(ins_sample_rate);
+    ins.init(scheduler.get_loop_rate_hz());
     ahrs.reset();
 
 	int counter = 0;
@@ -389,7 +390,7 @@ int8_t Rover::test_mag(uint8_t argc, const Menu::arg *argv)
         if(medium_loopCounter >= 5){
             if (compass.read()) {
                 // Calculate heading
-                Matrix3f m = ahrs.get_dcm_matrix();
+                Matrix3f m = ahrs.get_rotation_body_to_ned();
                 heading = compass.calculate_heading(m);
                 compass.learn_offsets();
             }
@@ -401,7 +402,7 @@ int8_t Rover::test_mag(uint8_t argc, const Menu::arg *argv)
             if (compass.healthy()) {
                 const Vector3f mag_ofs = compass.get_offsets();
                 const Vector3f mag = compass.get_field();
-                cliSerial->printf("Heading: %d, XYZ: %.0f, %.0f, %.0f,\tXYZoff: %6.2f, %6.2f, %6.2f\n",
+                cliSerial->printf("Heading: %f, XYZ: %.0f, %.0f, %.0f,\tXYZoff: %6.2f, %6.2f, %6.2f\n",
                                     (wrap_360_cd(ToDeg(heading) * 100)) /100,
                                     (double)mag.x, (double)mag.y, (double)mag.z,
                                     (double)mag_ofs.x, (double)mag_ofs.y, (double)mag_ofs.z);

@@ -120,7 +120,7 @@ const AP_Param::GroupInfo AP_AHRS::var_info[] = {
     // @Description: This controls whether the NavEKF Kalman filter is used for attitude and position estimation and whether fallback to the DCM algorithm is allowed. Note that on copters "disabled" is not available, and will be the same as "enabled - no fallback"
     // @Values: 0:Disabled,1:Enabled,2:Enable EKF2
     // @User: Advanced
-    AP_GROUPINFO("EKF_TYPE",  14, AP_AHRS, _ekf_type, 1),
+    AP_GROUPINFO("EKF_TYPE",  14, AP_AHRS, _ekf_type, 2),
 #endif
 
     AP_GROUPEND
@@ -230,8 +230,14 @@ Vector2f AP_AHRS::groundspeed_vector(void)
 //      should be called after _dcm_matrix is updated
 void AP_AHRS::update_trig(void)
 {
+    if (_last_trim != _trim.get()) {
+        _last_trim = _trim.get();
+        _rotation_autopilot_body_to_vehicle_body.from_euler(_last_trim.x, _last_trim.y, 0.0f);
+        _rotation_vehicle_body_to_autopilot_body = _rotation_autopilot_body_to_vehicle_body.transposed();
+    }
+
     Vector2f yaw_vector;
-    const Matrix3f &temp = get_dcm_matrix();
+    const Matrix3f &temp = get_rotation_body_to_ned();
 
     // sin_yaw, cos_yaw
     yaw_vector.x = temp.a.x;

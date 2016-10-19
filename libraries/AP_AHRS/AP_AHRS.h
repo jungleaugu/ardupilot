@@ -1,7 +1,6 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
+#pragma once
 
-#ifndef __AP_AHRS_H__
-#define __AP_AHRS_H__
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -31,8 +30,7 @@
 #include <AP_Baro/AP_Baro.h>
 #include <AP_Param/AP_Param.h>
 
-#include <AP_OpticalFlow/AP_OpticalFlow.h>
-
+class OpticalFlow;
 #define AP_AHRS_TRIM_LIMIT 10.0f        // maximum trim angle in degrees
 #define AP_AHRS_RP_P_MIN   0.05f        // minimum value for AHRS_RP_P parameter
 #define AP_AHRS_YAW_P_MIN  0.05f        // minimum value for AHRS_YAW_P parameter
@@ -87,6 +85,10 @@ public:
         _home.alt        = 0;
         _home.lng        = 0;
         _home.lat        = 0;
+
+        _last_trim = _trim.get();
+        _rotation_autopilot_body_to_vehicle_body.from_euler(_last_trim.x, _last_trim.y, 0.0f);
+        _rotation_vehicle_body_to_autopilot_body = _rotation_autopilot_body_to_vehicle_body.transposed();
     }
 
     // empty virtual destructor
@@ -164,6 +166,16 @@ public:
         return _baro;
     }
 
+    // get the index of the current primary accelerometer sensor
+    virtual uint8_t get_primary_accel_index(void) const {
+        return _ins.get_primary_accel();
+    }
+
+    // get the index of the current primary gyro sensor
+    virtual uint8_t get_primary_gyro_index(void) const {
+        return _ins.get_primary_gyro();
+    }
+    
     // accelerometer values in the earth frame in m/s/s
     virtual const Vector3f &get_accel_ef(uint8_t i) const {
         return _accel_ef[i];
@@ -179,7 +191,7 @@ public:
 
     // get yaw rate in earth frame in radians/sec
     float get_yaw_rate_earth(void) const {
-        return get_gyro() * get_dcm_matrix().c;
+        return get_gyro() * get_rotation_body_to_ned().c;
     }
 
     // Methods
@@ -190,6 +202,11 @@ public:
         return nullptr;
     }
 
+    // is the EKF backend doing its own sensor logging?
+    virtual bool have_ekf_logging(void) const {
+        return false;
+    }
+    
     // Euler angles (radians)
     float roll;
     float pitch;
@@ -226,7 +243,9 @@ public:
 
     // return a DCM rotation matrix representing our current
     // attitude
-    virtual const Matrix3f &get_dcm_matrix(void) const = 0;
+    virtual const Matrix3f &get_rotation_body_to_ned(void) const = 0;
+    const Matrix3f& get_rotation_autopilot_body_to_vehicle_body(void) const { return _rotation_autopilot_body_to_vehicle_body; }
+    const Matrix3f& get_rotation_vehicle_body_to_autopilot_body(void) const { return _rotation_vehicle_body_to_autopilot_body; }
 
     // get our current position estimate. Return true if a position is available,
     // otherwise false. This call fills in lat, lng and alt
@@ -273,6 +292,16 @@ public:
         return false;
     }
 
+    // returns the expected NED magnetic field
+    virtual bool get_expected_mag_field_NED(Vector3f &ret) const {
+        return false;
+    }
+
+    // returns the estimated magnetic field offsets in body frame
+    virtual bool get_mag_field_correction(Vector3f &ret) const {
+        return false;
+    }
+
     // return a position relative to home in meters, North/East/Down
     // order. This will only be accurate if have_inertial_nav() is
     // true
@@ -280,12 +309,21 @@ public:
         return false;
     }
 
+    // return a position relative to home in meters, North/East
+    // order. Return true if estimate is valid
+    virtual bool get_relative_position_NE(Vector2f &vecNE) const {
+        return false;
+    }
+
+    // return a Down position relative to home in meters
+    // Return true if estimate is valid
+    virtual bool get_relative_position_D(float &posD) const {
+        return false;
+    }
+
     // return ground speed estimate in meters/second. Used by ground vehicles.
-    float groundspeed(void) const {
-        if (_gps.status() <= AP_GPS::NO_FIX) {
-            return 0.0f;
-        }
-        return _gps.ground_speed();
+    float groundspeed(void) {
+        return groundspeed_vector().length();
     }
 
     // return true if we will use compass for yaw
@@ -410,9 +448,25 @@ public:
         return false;
     }
     
+    // get_variances - provides the innovations normalised using the innovation variance where a value of 0
+    // indicates prefect consistency between the measurement and the EKF solution and a value of of 1 is the maximum
+    // inconsistency that will be accpeted by the filter
+    // boolean false is returned if variances are not available
+    virtual bool get_variances(float &velVar, float &posVar, float &hgtVar, Vector3f &magVar, float &tasVar, Vector2f &offset) const {
+        return false;
+    }
+    
     // time that the AHRS has been up
     virtual uint32_t uptime_ms(void) const = 0;
 
+    // get the selected ekf type, for allocation decisions
+    int8_t get_ekf_type(void) const {
+        return _ekf_type;
+    }
+
+    // Retrieves the corrected NED delta velocity in use by the inertial navigation
+    virtual void getCorrectedDeltaVelocityNED(Vector3f& ret, float& dt) const { ret.zero(); _ins.get_delta_velocity(ret); dt = _ins.get_delta_velocity_dt(); }
+    
 protected:
     AHRS_VehicleClass _vehicle_class;
 
@@ -466,6 +520,11 @@ protected:
     // a vector to capture the difference between the controller and body frames
     AP_Vector3f         _trim;
 
+    // cached trim rotations
+    Vector3f _last_trim;
+    Matrix3f _rotation_autopilot_body_to_vehicle_body;
+    Matrix3f _rotation_vehicle_body_to_autopilot_body;
+
     // the limit of the gyro drift claimed by the sensors, in
     // radians/s/s
     float _gyro_drift_limit;
@@ -499,5 +558,3 @@ protected:
 #else
 #define AP_AHRS_TYPE AP_AHRS
 #endif
-
-#endif // __AP_AHRS_H__

@@ -18,11 +18,10 @@
 //  Septentrio GPS driver for ArduPilot.
 //	Code by Michael Oborne
 //
-
-#ifndef __AP_GPS_SBF_H__
-#define __AP_GPS_SBF_H__
+#pragma once
 
 #include "AP_GPS.h"
+#include "GPS_Backend.h"
 
 #define SBF_SETUP_MSG "\nsso, Stream1, COM1, PVTGeodetic+DOP+ExtEventPVTGeodetic, msec100\n"
 
@@ -36,7 +35,7 @@ public:
     // Methods
     bool read();
 
-    void inject_data(uint8_t *data, uint8_t len);
+    void inject_data(const uint8_t *data, uint16_t len) override;
 
 private:
 
@@ -53,7 +52,7 @@ private:
     "srd, Moderate, UAV\n",
     "sem, PVT, 5\n",
     "spm, Rover, StandAlone+SBAS+DGPS+RTK\n",
-    "sso, Stream2, Dsk1, Rinex+Event+RawData, msec100\n"};
+    "sso, Stream2, Dsk1, postprocess+event, msec100\n"};
    
     uint32_t last_hdop = 999;
     uint32_t crc_error_counter = 0;
@@ -138,6 +137,3 @@ private:
 
     void log_ExtEventPVTGeodetic(const msg4007 &temp);
 };
-
-#endif // __AP_GPS_SBF_H__
-

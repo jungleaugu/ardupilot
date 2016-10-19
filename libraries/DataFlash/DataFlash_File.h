@@ -6,13 +6,23 @@
    This uses posix file IO to create log files called logNN.dat in the
    given directory
  */
-
-#ifndef DataFlash_File_h
-#define DataFlash_File_h
+#pragma once
 
 #if HAL_OS_POSIX_IO
 
 #include "DataFlash_Backend.h"
+
+#if CONFIG_HAL_BOARD == HAL_BOARD_QURT
+/*
+  the QURT port has a limited range of system calls available. It
+  cannot provide all the facilities that DataFlash_File wants. It can
+  provide enough to be useful though, which is what
+  DATAFLASH_FILE_MINIMAL is for
+ */
+#define DATAFLASH_FILE_MINIMAL 1
+#else
+#define DATAFLASH_FILE_MINIMAL 0
+#endif
 
 class DataFlash_File : public DataFlash_Backend
 {
@@ -56,7 +66,11 @@ public:
     void flush(void);
 #endif
     void periodic_fullrate(const uint32_t now);
-    
+
+    // this method is used when reporting system status over mavlink
+    bool logging_enabled() const;
+    bool logging_failed() const;
+
 private:
     int _write_fd;
     int _read_fd;
@@ -131,6 +145,15 @@ private:
         return ret;
     };
 
+    // free-space checks; filling up SD cards under NuttX leads to
+    // corrupt filesystems which cause loss of data, failure to gather
+    // data and failures-to-boot.
+    uint64_t _free_space_last_check_time; // microseconds
+    const uint32_t _free_space_check_interval = 1000000UL; // microseconds
+    const uint32_t _free_space_min_avail = 8388608; // bytes
+
+    AP_HAL::Semaphore *semaphore;
+    
     // performance counters
     AP_HAL::Util::perf_counter_t  _perf_write;
     AP_HAL::Util::perf_counter_t  _perf_fsync;
@@ -139,5 +162,3 @@ private:
 };
 
 #endif // HAL_OS_POSIX_IO
-
-#endif // DataFlash_File_h

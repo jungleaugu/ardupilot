@@ -1,6 +1,4 @@
-
-#ifndef __AP_HAL_EMPTY_UARTDRIVER_H__
-#define __AP_HAL_EMPTY_UARTDRIVER_H__
+#pragma once
 
 #include "AP_HAL_Empty.h"
 
@@ -17,13 +15,11 @@ public:
     bool tx_pending();
 
     /* Empty implementations of Stream virtual methods */
-    int16_t available();
-    int16_t txspace();
-    int16_t read();
+    uint32_t available() override;
+    uint32_t txspace() override;
+    int16_t read() override;
 
     /* Empty implementations of Print virtual methods */
     size_t write(uint8_t c);
     size_t write(const uint8_t *buffer, size_t size);
 };
-
-#endif // __AP_HAL_EMPTY_UARTDRIVER_H__

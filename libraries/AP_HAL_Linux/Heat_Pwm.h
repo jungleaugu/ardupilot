@@ -13,19 +13,20 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#ifndef __HEAT_PWM_H__
-#define __HEAT_PWM_H__
+#pragma once
 
 #include "AP_HAL_Linux.h"
 #include "PWM_Sysfs.h"
 #include "Heat.h"
 
-class Linux::HeatPwm : public Linux::Heat {
+namespace Linux {
+
+class HeatPwm : public Heat {
 public:
     HeatPwm(uint8_t pwm_num, float Kp, float Ki,
-            uint32_t period_ns, float target);
-    void set_imu_temp(float current)override;
+            uint32_t period_ns);
+    void set_imu_temp(float current) override;
+    void set_imu_target_temp(int8_t *target) override;
 
 private:
     PWM_Sysfs_Base *_pwm;
@@ -34,6 +35,7 @@ private:
     float _Ki;
     uint32_t _period_ns;
     float _sum_error;
-    float _target;
+    int8_t *_target = nullptr;
 };
-#endif
+
+}

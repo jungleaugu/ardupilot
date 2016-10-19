@@ -1,6 +1,7 @@
 // -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
 #include "Rover.h"
+#include "version.h"
 
 #if LOGGING_ENABLED == ENABLED
 
@@ -179,7 +180,7 @@ void Rover::Log_Write_Performance()
         gyro_drift_x    : (int16_t)(ahrs.get_gyro_drift().x * 1000),
         gyro_drift_y    : (int16_t)(ahrs.get_gyro_drift().y * 1000),
         gyro_drift_z    : (int16_t)(ahrs.get_gyro_drift().z * 1000),
-        i2c_lockup_count: hal.i2c->lockup_count(),
+        i2c_lockup_count: 0,
         ins_error_count  : ins.error_count()
     };
     DataFlash.WriteBlock(&pkt, sizeof(pkt));
@@ -199,7 +200,7 @@ void Rover::Log_Write_Steering()
         LOG_PACKET_HEADER_INIT(LOG_STEERING_MSG),
         time_us        : AP_HAL::micros64(),
         demanded_accel : lateral_acceleration,
-        achieved_accel : gps.ground_speed() * ins.get_gyro().z,
+        achieved_accel : ahrs.groundspeed() * ins.get_gyro().z,
     };
     DataFlash.WriteBlock(&pkt, sizeof(pkt));
 }
@@ -239,10 +240,10 @@ void Rover::Log_Write_Control_Tuning()
     struct log_Control_Tuning pkt = {
         LOG_PACKET_HEADER_INIT(LOG_CTUN_MSG),
         time_us         : AP_HAL::micros64(),
-        steer_out       : (int16_t)channel_steer->servo_out,
+        steer_out       : (int16_t)channel_steer->get_servo_out(),
         roll            : (int16_t)ahrs.roll_sensor,
         pitch           : (int16_t)ahrs.pitch_sensor,
-        throttle_out    : (int16_t)channel_throttle->servo_out,
+        throttle_out    : (int16_t)channel_throttle->get_servo_out(),
         accel_y         : accel.y
     };
     DataFlash.WriteBlock(&pkt, sizeof(pkt));
@@ -256,9 +257,10 @@ struct PACKED log_Nav_Tuning {
     uint16_t target_bearing_cd;
     uint16_t nav_bearing_cd;
     int8_t   throttle;
+    float xtrack_error;
 };
 
-// Write a navigation tuning packet. Total length : 18 bytes
+// Write a navigation tuning packet
 void Rover::Log_Write_Nav_Tuning()
 {
     struct log_Nav_Tuning pkt = {
@@ -268,7 +270,8 @@ void Rover::Log_Write_Nav_Tuning()
         wp_distance         : wp_distance,
         target_bearing_cd   : (uint16_t)nav_controller->target_bearing_cd(),
         nav_bearing_cd      : (uint16_t)nav_controller->nav_bearing_cd(),
-        throttle            : (int8_t)(100 * channel_throttle->norm_output())
+        throttle            : (int8_t)(100 * channel_throttle->norm_output()),
+        xtrack_error        : nav_controller->crosstrack_error()
     };
     DataFlash.WriteBlock(&pkt, sizeof(pkt));
 }
@@ -290,7 +293,9 @@ void Rover::Log_Write_Attitude()
 #endif
     DataFlash.Log_Write_POS(ahrs);
 
-    DataFlash.Log_Write_PID(LOG_PIDY_MSG, steerController.get_pid_info());
+    DataFlash.Log_Write_PID(LOG_PIDS_MSG, steerController.get_pid_info());
+
+    DataFlash.Log_Write_PID(LOG_PIDA_MSG, g.pidSpeedThrottle.get_pid_info());
 }
 
 struct PACKED log_Sonar {
@@ -330,7 +335,7 @@ void Rover::Log_Write_Sonar()
 
 void Rover::Log_Write_Current()
 {
-    DataFlash.Log_Write_Current(battery, channel_throttle->control_in);
+    DataFlash.Log_Write_Current(battery);
 
     // also write power status
     DataFlash.Log_Write_Power();
@@ -373,7 +378,7 @@ void Rover::Log_Write_Home_And_Origin()
 #if AP_AHRS_NAVEKF_AVAILABLE
     // log ekf origin if set
     Location ekf_orig;
-    if (ahrs.get_NavEKF_const().getOriginLLH(ekf_orig)) {
+    if (ahrs.get_origin(ekf_orig)) {
         DataFlash.Log_Write_Origin(LogOriginType::ekf_origin, ekf_orig);
     }
 #endif
@@ -393,7 +398,7 @@ const LogStructure Rover::log_structure[] = {
     { LOG_CTUN_MSG, sizeof(log_Control_Tuning),     
       "CTUN", "Qhcchf",     "TimeUS,Steer,Roll,Pitch,ThrOut,AccY" },
     { LOG_NTUN_MSG, sizeof(log_Nav_Tuning),         
-      "NTUN", "QHfHHb",     "TimeUS,Yaw,WpDist,TargBrg,NavBrg,Thr" },
+      "NTUN", "QHfHHbf",    "TimeUS,Yaw,WpDist,TargBrg,NavBrg,Thr,XT" },
     { LOG_SONAR_MSG, sizeof(log_Sonar),             
       "SONR", "QfHHHbHCb",  "TimeUS,LatAcc,S1Dist,S2Dist,DCnt,TAng,TTim,Spd,Thr" },
     { LOG_ARM_DISARM_MSG, sizeof(log_Arm_Disarm),
@@ -474,4 +479,3 @@ void Rover::start_logging() {}
 void Rover::Log_Write_RC(void) {}
 
 #endif // LOGGING_ENABLED
-

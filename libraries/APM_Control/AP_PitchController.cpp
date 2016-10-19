@@ -39,7 +39,7 @@ const AP_Param::GroupInfo AP_PitchController::var_info[] = {
 	// @Range: 0.1 3.0
 	// @Increment: 0.1
 	// @User: User
-	AP_GROUPINFO("P",        1, AP_PitchController, gains.P,          0.4f),
+	AP_GROUPINFO("P",        1, AP_PitchController, gains.P,          0.6f),
 
 	// @Param: D
 	// @DisplayName: Damping Gain
@@ -55,7 +55,7 @@ const AP_Param::GroupInfo AP_PitchController::var_info[] = {
 	// @Range: 0 0.5
 	// @Increment: 0.05
 	// @User: User
-	AP_GROUPINFO("I",        3, AP_PitchController, gains.I,        0.04f),
+	AP_GROUPINFO("I",        3, AP_PitchController, gains.I,        0.15f),
 
 	// @Param: RMAX_UP
 	// @DisplayName: Pitch up max rate
@@ -136,7 +136,21 @@ int32_t AP_PitchController::_get_rate_out(float desired_rate, float scaler, bool
 	// This means elevator trim offset doesn't change as the value of scaler changes with airspeed
 	// Don't integrate if in stabilise mode as the integrator will wind up against the pilots inputs
 	if (!disable_integrator && gains.I > 0) {
-        float ki_rate = gains.I * gains.tau;
+        float k_I = gains.I;
+        if (is_zero(gains.FF)) {
+            /*
+              if the user hasn't set a direct FF then assume they are
+              not doing sophisticated tuning. Set a minimum I value of
+              0.15 to ensure that the time constant for trimming in
+              pitch is not too long. We have had a lot of user issues
+              with very small I value leading to very slow pitch
+              trimming, which causes a lot of problems for TECS. A
+              value of 0.15 is still quite small, but a lot better
+              than what many users are running.
+             */
+            k_I = MAX(k_I, 0.15f);
+        }
+        float ki_rate = k_I * gains.tau;
 		//only integrate if gain and time step are positive and airspeed above min value.
 		if (dt > 0 && aspeed > 0.5f*float(aparm.airspeed_min)) {
 		    float integrator_delta = rate_error * ki_rate * delta_time * scaler;
@@ -187,7 +201,27 @@ int32_t AP_PitchController::_get_rate_out(float desired_rate, float scaler, bool
     }
 
 	_last_out += _pid_info.I;
-	
+
+    /*
+      when we are past the users defined roll limit for the
+      aircraft our priority should be to bring the aircraft back
+      within the roll limit. Using elevator for pitch control at
+      large roll angles is ineffective, and can be counter
+      productive as it induces earth-frame yaw which can reduce
+      the ability to roll. We linearly reduce elevator input when
+      beyond the configured roll limit, reducing to zero at 90
+      degrees
+    */
+    float roll_wrapped = fabsf(_ahrs.roll_sensor);
+    if (roll_wrapped > 9000) {
+        roll_wrapped = 18000 - roll_wrapped;
+    }
+    if (roll_wrapped > aparm.roll_limit_cd + 500 && aparm.roll_limit_cd < 8500 &&
+        labs(_ahrs.pitch_sensor) < 7000) {
+        float roll_prop = (roll_wrapped - (aparm.roll_limit_cd+500)) / (float)(9000 - aparm.roll_limit_cd);
+        _last_out *= (1 - roll_prop);
+    }
+    
 	// Convert to centi-degrees and constrain
 	return constrain_float(_last_out * 100, -4500, 4500);
 }

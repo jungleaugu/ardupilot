@@ -1,6 +1,7 @@
 // -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
 #include "Copter.h"
+#include "version.h"
 
 /*****************************************************************************
 *   The init_ardupilot function processes everything we need for an in - air restart
@@ -94,9 +95,12 @@ void Copter::init_ardupilot()
     // initialise serial port
     serial_manager.init_console();
 
+    // init vehicle capabilties
+    init_capabilities();
+
     cliSerial->printf("\n\nInit " FIRMWARE_STRING
                          "\n\nFree RAM: %u\n",
-                        hal.util->available_memory());
+                      (unsigned)hal.util->available_memory());
 
     //
     // Report firmware version code expect on console (check of actual EEPROM format version is done in load_parameters function)
@@ -106,10 +110,22 @@ void Copter::init_ardupilot()
     // load parameters from EEPROM
     load_parameters();
 
-    BoardConfig.init();
+    GCS_MAVLINK::set_dataflash(&DataFlash);
 
-    // initialise serial port
+    // identify ourselves correctly with the ground station
+    mavlink_system.sysid = g.sysid_this_mav;
+    
+    // initialise serial ports
     serial_manager.init();
+
+    // setup first port early to allow BoardConfig to report errors
+    gcs[0].setup_uart(serial_manager, AP_SerialManager::SerialProtocol_MAVLink, 0);
+
+    // Register mavlink_delay_cb, which will run anytime you have
+    // more than 5ms remaining in your call to hal.scheduler->delay
+    hal.scheduler->register_delay_callback(mavlink_delay_cb_static, 5);
+    
+    BoardConfig.init();
 
     // init EPM cargo gripper
 #if EPM_ENABLED == ENABLED
@@ -128,35 +144,22 @@ void Copter::init_ardupilot()
     
     barometer.init();
 
-    // Register the mavlink service callback. This will run
-    // anytime there are more than 5ms remaining in a call to
-    // hal.scheduler->delay.
-    hal.scheduler->register_delay_callback(mavlink_delay_cb_static, 5);
-
     // we start by assuming USB connected, as we initialed the serial
     // port with SERIAL0_BAUD. check_usb_mux() fixes this if need be.
     ap.usb_connected = true;
     check_usb_mux();
 
-    // init the GCS connected to the console
-    gcs[0].setup_uart(serial_manager, AP_SerialManager::SerialProtocol_Console, 0);
-
-    // init telemetry port
-    gcs[1].setup_uart(serial_manager, AP_SerialManager::SerialProtocol_MAVLink, 0);
-
-    // setup serial port for telem2
-    gcs[2].setup_uart(serial_manager, AP_SerialManager::SerialProtocol_MAVLink, 1);
-
-    // setup serial port for fourth telemetry port (not used by default)
-    gcs[3].setup_uart(serial_manager, AP_SerialManager::SerialProtocol_MAVLink, 2);
+    // setup telem slots with serial ports
+    for (uint8_t i = 1; i < MAVLINK_COMM_NUM_BUFFERS; i++) {
+        gcs[i].setup_uart(serial_manager, AP_SerialManager::SerialProtocol_MAVLink, i);
+    }
 
 #if FRSKY_TELEM_ENABLED == ENABLED
-    // setup frsky
-    frsky_telemetry.init(serial_manager);
+    // setup frsky, and pass a number of parameters to the library
+    frsky_telemetry.init(serial_manager, FIRMWARE_STRING " " FRAME_CONFIG_STRING,
+                         FRAME_MAV_TYPE,
+                         &g.fs_batt_voltage, &g.fs_batt_mah, &ap.value);
 #endif
-
-    // identify ourselves correctly with the ground station
-    mavlink_system.sysid = g.sysid_this_mav;
 
 #if LOGGING_ENABLED == ENABLED
     log_init();
@@ -195,8 +198,15 @@ void Copter::init_ardupilot()
     ahrs.set_optflow(&optflow);
 #endif
 
-    // initialise attitude and position controllers
-    attitude_control.set_dt(MAIN_LOOP_SECONDS);
+    // init Location class
+    Location_Class::set_ahrs(&ahrs);
+#if AP_TERRAIN_AVAILABLE && AC_TERRAIN
+    Location_Class::set_terrain(&terrain);
+    wp_nav.set_terrain(&terrain);
+#endif
+    wp_nav.set_avoidance(&avoid);
+
+    attitude_control.parameter_sanity_check();
     pos_control.set_dt(MAIN_LOOP_SECONDS);
 
     // init the optical flow sensor
@@ -204,7 +214,7 @@ void Copter::init_ardupilot()
 
 #if MOUNT == ENABLED
     // initialise camera mount
-    camera_mount.init(serial_manager);
+    camera_mount.init(&DataFlash, serial_manager);
 #endif
 
 #if PRECISION_LANDING == ENABLED
@@ -245,10 +255,11 @@ void Copter::init_ardupilot()
     //-----------------------------
     init_barometer(true);
 
-    // initialise sonar
-#if CONFIG_SONAR == ENABLED
-    init_sonar();
-#endif
+    // initialise rangefinder
+    init_rangefinder();
+
+    // init proximity sensor
+    init_proximity();
 
     // initialise AP_RPM library
     rpm_sensor.init();
@@ -278,9 +289,6 @@ void Copter::init_ardupilot()
     ins.set_raw_logging(should_log(MASK_LOG_IMU_RAW));
     ins.set_dataflash(&DataFlash);
 
-    // init vehicle capabilties
-    init_capabilities();
-
     cliSerial->print("\nReady to FLY ");
 
     // flag that initialisation has completed
@@ -298,13 +306,13 @@ void Copter::startup_INS_ground()
     ahrs.set_vehicle_class(AHRS_VEHICLE_COPTER);
 
     // Warm up and calibrate gyro offsets
-    ins.init(ins_sample_rate);
+    ins.init(scheduler.get_loop_rate_hz());
 
     // reset ahrs including gyro bias
     ahrs.reset();
 }
 
-// calibrate gyros - returns true if succesfully calibrated
+// calibrate gyros - returns true if successfully calibrated
 bool Copter::calibrate_gyros()
 {
     // gyro offset calibration
@@ -405,7 +413,8 @@ void Copter::update_auto_armed()
         }
 #else
         // if motors are armed and throttle is above zero auto_armed should be true
-        if(motors.armed() && !ap.throttle_zero) {
+        // if motors are armed and we are in throw mode, then auto_ermed should be true
+        if(motors.armed() && (!ap.throttle_zero || control_mode == THROW)) {
             set_auto_armed(true);
         }
 #endif // HELI_FRAME
@@ -423,15 +432,6 @@ void Copter::check_usb_mux(void)
     ap.usb_connected = usb_check;
 }
 
-// frsky_telemetry_send - sends telemetry data using frsky telemetry
-//  should be called at 5Hz by scheduler
-#if FRSKY_TELEM_ENABLED == ENABLED
-void Copter::frsky_telemetry_send(void)
-{
-    frsky_telemetry.send_frames((uint8_t)control_mode);
-}
-#endif
-
 /*
   should we log a message type now?
  */
@@ -441,7 +441,7 @@ bool Copter::should_log(uint32_t mask)
     if (!(mask & g.log_bitmask) || in_mavlink_delay) {
         return false;
     }
-    bool ret = motors.armed() || (g.log_bitmask & MASK_LOG_WHEN_DISARMED) != 0;
+    bool ret = motors.armed() || DataFlash.log_while_disarmed();
     if (ret && !DataFlash.logging_started() && !in_log_download) {
         start_logging();
     }

@@ -1,3 +1,4 @@
+#include "ap_version.h"
 #include "DFMessageWriter.h"
 
 extern const AP_HAL::HAL& hal;
@@ -37,9 +38,6 @@ void DFMessageWriter_DFLogStart::process()
             if (!_dataflash_backend->Log_Write_Format(_dataflash_backend->structure(next_format_to_send))) {
                 return; // call me again!
             }
-            // provide hook to avoid corrupting the APM1/APM2
-            // dataflash by writing too fast:
-            _dataflash_backend->WroteStartupFormat();
             next_format_to_send++;
         }
         _fmt_done = true;
@@ -52,7 +50,6 @@ void DFMessageWriter_DFLogStart::process()
                 return;
             }
             ap = AP_Param::next_scalar(&token, &type);
-            _dataflash_backend->WroteStartupParam();
         }
 
         stage = ls_blockwriter_stage_sysinfo;

@@ -4,20 +4,20 @@
  * Portions of this driver were borrowed from the PX4Firmware px4flow driver which can be found here:
  *     https://github.com/PX4/Firmware/blob/master/src/drivers/px4flow/px4flow.cpp
  */
-
-#ifndef AP_OpticalFlow_Linux_H
-#define AP_OpticalFlow_Linux_H
+#pragma once
 
 #include "OpticalFlow.h"
 
 #include <AP_Common/AP_Common.h>
+#include <AP_HAL/I2CDevice.h>
+#include <AP_HAL/utility/OwnPtr.h>
 #include <AP_Math/AP_Math.h>
 
 class AP_OpticalFlow_Linux : public OpticalFlow_backend
 {
 public:
     // constructor
-    AP_OpticalFlow_Linux(OpticalFlow &_frontend);
+    AP_OpticalFlow_Linux(OpticalFlow &_frontend, AP_HAL::OwnPtr<AP_HAL::I2CDevice> dev);
 
     // initialise the sensor
     void init();
@@ -54,6 +54,7 @@ private:
         uint16_t ground_distance;
         int16_t gyro_temperature;
         uint8_t qual;
+        uint8_t padding_not_used;
     } i2c_integral_frame;
 
     typedef struct {
@@ -72,6 +73,8 @@ private:
         uint8_t quality;                        // Average of quality of accumulated frames, 0: bad quality, 255: maximum quality
     } optical_flow_s;
 
+    AP_HAL::OwnPtr<AP_HAL::I2CDevice> _dev;
+
     // request the sensor produce a measurement, returns true on success
     bool request_measurement();
 
@@ -82,5 +85,3 @@ private:
     uint16_t num_errors = 0;
     uint32_t last_read_ms = 0;
 };
-
-#endif

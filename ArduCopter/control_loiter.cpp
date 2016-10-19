@@ -3,7 +3,7 @@
 #include "Copter.h"
 
 /*
- * control_loiter.pde - init and run calls for loiter flight mode
+ * Init and run calls for loiter flight mode
  */
 
 // loiter_init - initialise loiter controller
@@ -26,8 +26,10 @@ bool Copter::loiter_init(bool ignore_checks)
         pos_control.set_accel_z(g.pilot_accel_z);
 
         // initialise position and desired velocity
-        pos_control.set_alt_target(inertial_nav.get_altitude());
-        pos_control.set_desired_velocity_z(inertial_nav.get_velocity_z());
+        if (!pos_control.is_active_z()) {
+            pos_control.set_alt_target_to_current_alt();
+            pos_control.set_desired_velocity_z(inertial_nav.get_velocity_z());
+        }
 
         return true;
     }else{
@@ -54,13 +56,13 @@ void Copter::loiter_run()
         update_simple_mode();
 
         // process pilot's roll and pitch input
-        wp_nav.set_pilot_desired_acceleration(channel_roll->control_in, channel_pitch->control_in);
+        wp_nav.set_pilot_desired_acceleration(channel_roll->get_control_in(), channel_pitch->get_control_in());
 
         // get pilot's desired yaw rate
-        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->control_in);
+        target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
 
         // get pilot desired climb rate
-        target_climb_rate = get_pilot_desired_climb_rate(channel_throttle->control_in);
+        target_climb_rate = get_pilot_desired_climb_rate(channel_throttle->get_control_in());
         target_climb_rate = constrain_float(target_climb_rate, -g.pilot_velocity_z_max, g.pilot_velocity_z_max);
     } else {
         // clear out pilot desired acceleration in case radio failsafe event occurs and we do not switch to RTL for some reason
@@ -72,14 +74,19 @@ void Copter::loiter_run()
         wp_nav.loiter_soften_for_landing();
     }
 
+#if FRAME_CONFIG == HELI_FRAME
+    // helicopters are held on the ground until rotor speed runup has finished
+    bool takeoff_triggered = (ap.land_complete && (target_climb_rate > 0.0f) && motors.rotor_runup_complete());
+#else
+    bool takeoff_triggered = ap.land_complete && (target_climb_rate > 0.0f);
+#endif
+
     // Loiter State Machine Determination
-    if(!ap.auto_armed) {
-        loiter_state = Loiter_Disarmed;
-    } else if (!motors.get_interlock()){
-        loiter_state = Loiter_MotorStop;
-    } else if (takeoff_state.running || (ap.land_complete && (channel_throttle->control_in > get_takeoff_trigger_throttle()))){
+    if (!motors.armed() || !motors.get_interlock()) {
+        loiter_state = Loiter_MotorStopped;
+    } else if (takeoff_state.running || takeoff_triggered) {
         loiter_state = Loiter_Takeoff;
-    } else if (ap.land_complete){
+    } else if (!ap.auto_armed || ap.land_complete) {
         loiter_state = Loiter_Landed;
     } else {
         loiter_state = Loiter_Flying;
@@ -88,42 +95,28 @@ void Copter::loiter_run()
     // Loiter State Machine
     switch (loiter_state) {
 
-    case Loiter_Disarmed:
+    case Loiter_MotorStopped:
 
-        wp_nav.init_loiter_target();
-#if FRAME_CONFIG == HELI_FRAME  // Helicopters always stabilize roll/pitch/yaw
-        // call attitude controller
-        attitude_control.input_euler_angle_roll_pitch_euler_rate_yaw_smooth(0, 0, 0, get_smoothing_gain());
-        attitude_control.set_throttle_out(0,false,g.throttle_filt);
-#else   // multicopters do not stabilize roll/pitch/yaw when disarmed
-        attitude_control.set_throttle_out_unstabilized(0,true,g.throttle_filt);
-#endif  // HELI_FRAME
-        pos_control.relax_alt_hold_controllers(get_throttle_pre_takeoff(channel_throttle->control_in)-throttle_average);
-        break;
-
-    case Loiter_MotorStop:
-
+        motors.set_desired_spool_state(AP_Motors::DESIRED_SHUT_DOWN);
 #if FRAME_CONFIG == HELI_FRAME
-        // helicopters are capable of flying even with the motor stopped, therefore we will attempt to keep flying
-        // run loiter controller
-        wp_nav.update_loiter(ekfGndSpdLimit, ekfNavVelGainScaler);
-
-        // call attitude controller
-        attitude_control.input_euler_angle_roll_pitch_euler_rate_yaw(wp_nav.get_roll(), wp_nav.get_pitch(), target_yaw_rate);
-
         // force descent rate and call position controller
         pos_control.set_alt_target_from_climb_rate(-abs(g.land_speed), G_Dt, false);
-        pos_control.update_z_controller();
 #else
         wp_nav.init_loiter_target();
-        // multicopters do not stabilize roll/pitch/yaw when motors are stopped
-        attitude_control.set_throttle_out_unstabilized(0,true,g.throttle_filt);
-        pos_control.relax_alt_hold_controllers(get_throttle_pre_takeoff(channel_throttle->control_in)-throttle_average);
-#endif  // HELI_FRAME
+        attitude_control.reset_rate_controller_I_terms();
+        attitude_control.set_yaw_target_to_current_heading();
+        pos_control.relax_alt_hold_controllers(0.0f);   // forces throttle output to go to zero
+#endif
+        wp_nav.update_loiter(ekfGndSpdLimit, ekfNavVelGainScaler);
+        attitude_control.input_euler_angle_roll_pitch_euler_rate_yaw(wp_nav.get_roll(), wp_nav.get_pitch(), target_yaw_rate, get_smoothing_gain());
+        pos_control.update_z_controller();
         break;
 
     case Loiter_Takeoff:
+        // set motors to full range
+        motors.set_desired_spool_state(AP_Motors::DESIRED_THROTTLE_UNLIMITED);
 
+        // initiate take-off
         if (!takeoff_state.running) {
             takeoff_timer_start(constrain_float(g.pilot_takeoff_alt,0.0f,1000.0f));
             // indicate we are taking off
@@ -139,7 +132,7 @@ void Copter::loiter_run()
         wp_nav.update_loiter(ekfGndSpdLimit, ekfNavVelGainScaler);
 
         // call attitude controller
-        attitude_control.input_euler_angle_roll_pitch_euler_rate_yaw(wp_nav.get_roll(), wp_nav.get_pitch(), target_yaw_rate);
+        attitude_control.input_euler_angle_roll_pitch_euler_rate_yaw(wp_nav.get_roll(), wp_nav.get_pitch(), target_yaw_rate, get_smoothing_gain());
 
         // update altitude target and call position controller
         pos_control.set_alt_target_from_climb_rate_ff(target_climb_rate, G_Dt, false);
@@ -148,30 +141,34 @@ void Copter::loiter_run()
         break;
 
     case Loiter_Landed:
-
+        // set motors to spin-when-armed if throttle below deadzone, otherwise full range (but motors will only spin at min throttle)
+        if (target_climb_rate < 0.0f) {
+            motors.set_desired_spool_state(AP_Motors::DESIRED_SPIN_WHEN_ARMED);
+        } else {
+            motors.set_desired_spool_state(AP_Motors::DESIRED_THROTTLE_UNLIMITED);
+        }
         wp_nav.init_loiter_target();
-#if FRAME_CONFIG == HELI_FRAME  // Helicopters always stabilize roll/pitch/yaw
-        // call attitude controller
-        attitude_control.input_euler_angle_roll_pitch_euler_rate_yaw_smooth(0, 0, 0, get_smoothing_gain());
-        attitude_control.set_throttle_out(get_throttle_pre_takeoff(channel_throttle->control_in),false,g.throttle_filt);
-#else   // multicopters do not stabilize roll/pitch/yaw when disarmed
-        // move throttle to between minimum and non-takeoff-throttle to keep us on the ground
-        attitude_control.set_throttle_out_unstabilized(get_throttle_pre_takeoff(channel_throttle->control_in),true,g.throttle_filt);
-#endif
-        pos_control.relax_alt_hold_controllers(get_throttle_pre_takeoff(channel_throttle->control_in)-throttle_average);
+        attitude_control.reset_rate_controller_I_terms();
+        attitude_control.set_yaw_target_to_current_heading();
+        attitude_control.input_euler_angle_roll_pitch_euler_rate_yaw(0, 0, 0, get_smoothing_gain());
+        pos_control.relax_alt_hold_controllers(0.0f);   // forces throttle output to go to zero
+        pos_control.update_z_controller();
         break;
 
     case Loiter_Flying:
+
+        // set motors to full range
+        motors.set_desired_spool_state(AP_Motors::DESIRED_THROTTLE_UNLIMITED);
 
         // run loiter controller
         wp_nav.update_loiter(ekfGndSpdLimit, ekfNavVelGainScaler);
 
         // call attitude controller
-        attitude_control.input_euler_angle_roll_pitch_euler_rate_yaw(wp_nav.get_roll(), wp_nav.get_pitch(), target_yaw_rate);
+        attitude_control.input_euler_angle_roll_pitch_euler_rate_yaw(wp_nav.get_roll(), wp_nav.get_pitch(), target_yaw_rate, get_smoothing_gain());
 
-        // run altitude controller
-        if (sonar_enabled && (sonar_alt_health >= SONAR_ALT_HEALTH_MAX)) {
-            // if sonar is ok, use surface tracking
+        // adjust climb rate using rangefinder
+        if (rangefinder_alt_ok()) {
+            // if rangefinder is ok, use surface tracking
             target_climb_rate = get_surface_tracking_climb_rate(target_climb_rate, pos_control.get_alt_target(), G_Dt);
         }
 

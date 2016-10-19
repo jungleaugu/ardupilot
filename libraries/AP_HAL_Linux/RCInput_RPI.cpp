@@ -1,34 +1,39 @@
 #include <AP_HAL/AP_HAL.h>
 
-#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_NAVIO || CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_ERLEBRAIN2
+#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_NAVIO ||        \
+    CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_ERLEBRAIN2 ||   \
+    CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BH ||           \
+    CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXFMINI
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
+
 #include "GPIO.h"
 #include "RCInput_RPI.h"
 #include "Util_RPI.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <stdint.h>
-#include <sys/ioctl.h>
-#include <pthread.h>
-#include <string.h>
-#include <errno.h>
-#include <stdint.h>
-#include <time.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
-#include <assert.h>
-
 
 //Parametres
 #define RCIN_RPI_BUFFER_LENGTH   8
 #define RCIN_RPI_SAMPLE_FREQ     500
 #define RCIN_RPI_DMA_CHANNEL     0
 #define RCIN_RPI_MAX_COUNTER     1300
+#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BH
+#define PPM_INPUT_RPI RPI_GPIO_5
+#else
 #define PPM_INPUT_RPI RPI_GPIO_4
+#endif
 #define RCIN_RPI_MAX_SIZE_LINE   50
 
 //Memory Addresses
@@ -245,7 +250,7 @@ void RCInput_RPI::stop_dma()
 void RCInput_RPI::termination_handler(int signum)
 {
     stop_dma();
-    AP_HAL::panic("Interrupted");
+    AP_HAL::panic("Interrupted: %s", strsignal(signum));
 }
 
 
@@ -371,12 +376,16 @@ void RCInput_RPI::init_DMA()
 //We must stop DMA when the process is killed
 void RCInput_RPI::set_sigaction()
 {
-    for (int i = 0; i < 64; i++) { 
+    for (int i = 0; i < NSIG; i++) {
         //catch all signals (like ctrl+c, ctrl+z, ...) to ensure DMA is disabled
-        struct sigaction sa;
+        struct sigaction sa, sa_old;
         memset(&sa, 0, sizeof(sa));
-        sa.sa_handler = RCInput_RPI::termination_handler;
-        sigaction(i, &sa, NULL);
+        sigaction(i, nullptr, &sa_old);
+
+        if (sa_old.sa_handler == nullptr) {
+            sa.sa_handler = RCInput_RPI::termination_handler;
+            sigaction(i, &sa, nullptr);
+        }
     }
 }
 
@@ -465,7 +474,7 @@ void RCInput_RPI::_timer_tick()
         break;}
     }
     
-    //How many bytes have DMA transfered (and we can process)?
+    //How many bytes have DMA transferred (and we can process)?
     counter = circle_buffer->bytes_available(curr_pointer, circle_buffer->get_offset(circle_buffer->_virt_pages, (uintptr_t)x));
     //We can't stay in method for a long time, because it may lead to delays
     if (counter > RCIN_RPI_MAX_COUNTER) {

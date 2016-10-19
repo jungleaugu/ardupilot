@@ -25,6 +25,68 @@ static void test_rotation_accuracy(void)
 
     hal.console->println("\nRotation method accuracy:");
 
+    // test roll
+    for( i=0; i<90; i++ ) {
+
+        // reset initial attitude
+        attitude.from_euler(0,0,0);
+
+        // calculate small rotation vector
+        rot_angle = ToRad(i);
+        small_rotation = Vector3f(rot_angle,0,0);
+
+        // apply small rotation
+        attitude.rotate(small_rotation);
+
+        // get resulting attitude's euler angles
+        attitude.to_euler(&roll, &pitch, &yaw);
+
+        // now try via from_axis_angle
+        Matrix3f r2;
+        r2.from_axis_angle(Vector3f(1,0,0), rot_angle);
+        attitude.from_euler(0,0,0);
+        attitude = r2 * attitude;
+
+        float roll2, pitch2, yaw2;
+        attitude.to_euler(&roll2, &pitch2, &yaw2);
+        
+        // display results
+        hal.console->printf("actual angle: %d  angle1:%4.2f  angle2:%4.2f\n",
+                            (int)i,ToDeg(roll), ToDeg(roll2));
+    }
+
+    // test pitch
+    for( i=0; i<90; i++ ) {
+
+        // reset initial attitude
+        attitude.from_euler(0,0,0);
+
+        // calculate small rotation vector
+        rot_angle = ToRad(i);
+        small_rotation = Vector3f(0,rot_angle,0);
+
+        // apply small rotation
+        attitude.rotate(small_rotation);
+
+        // get resulting attitude's euler angles
+        attitude.to_euler(&roll, &pitch, &yaw);
+
+        // now try via from_axis_angle
+        Matrix3f r2;
+        r2.from_axis_angle(Vector3f(0,1,0), rot_angle);
+        attitude.from_euler(0,0,0);
+        attitude = r2 * attitude;
+
+        float roll2, pitch2, yaw2;
+        attitude.to_euler(&roll2, &pitch2, &yaw2);
+        
+        // display results
+        hal.console->printf("actual angle: %d  angle1:%4.2f  angle2:%4.2f\n",
+                            (int)i,ToDeg(pitch), ToDeg(pitch2));
+    }
+    
+
+    // test yaw
     for( i=0; i<90; i++ ) {
 
         // reset initial attitude
@@ -40,10 +102,18 @@ static void test_rotation_accuracy(void)
         // get resulting attitude's euler angles
         attitude.to_euler(&roll, &pitch, &yaw);
 
+        // now try via from_axis_angle
+        Matrix3f r2;
+        r2.from_axis_angle(Vector3f(0,0,1), rot_angle);
+        attitude.from_euler(0,0,0);
+        attitude = r2 * attitude;
+
+        float roll2, pitch2, yaw2;
+        attitude.to_euler(&roll2, &pitch2, &yaw2);
+        
         // display results
-        hal.console->printf(
-                "actual angle: %d\tcalculated angle:%4.2f\n",
-                (int)i,ToDeg(yaw));
+        hal.console->printf("actual angle: %d  angle1:%4.2f  angle2:%4.2f\n",
+                            (int)i,ToDeg(yaw), ToDeg(yaw2));
     }
 }
 
@@ -79,6 +149,26 @@ static void test_euler(enum Rotation rotation, float roll, float pitch, float ya
     }
 }
 
+static void test_rotate_inverse(void)
+{
+    hal.console->println("\nrotate inverse test(Vector (1,1,1)):");
+    Vector3f vec(1.0f,1.0f,1.0f), cmp_vec(1.0f,1.0f,1.0f);
+    for (enum Rotation r=ROTATION_NONE; 
+         r<ROTATION_MAX;
+         r = (enum Rotation)((uint8_t)r+1)) {
+        hal.console->printf("\nROTATION(%d) ",r);
+        vec.rotate(r);
+        print_vector(vec);
+
+        hal.console->printf("INV_ROTATION(%d)",r);
+        vec.rotate_inverse(r);
+        print_vector(vec);
+        if((vec - cmp_vec).length() > 1e-5) {
+            hal.console->printf("Rotation Test Failed!!! %.8f\n",(vec - cmp_vec).length());
+            return;
+        }
+    }
+}
 static void test_eulers(void)
 {
     hal.console->println("euler tests");
@@ -120,7 +210,7 @@ static void test_eulers(void)
     test_euler(ROTATION_ROLL_270_PITCH_270,270,270,   0);    
     test_euler(ROTATION_ROLL_90_PITCH_180_YAW_90, 90, 180,  90);    
     test_euler(ROTATION_ROLL_90_YAW_270,   90,   0, 270);
-    test_euler(ROTATION_YAW_293_PITCH_68_ROLL_90,90,68.8,293.3);
+    test_euler(ROTATION_ROLL_90_PITCH_68_YAW_293,90,68.8,293.3);
 }
 
 static bool have_rotation(const Matrix3f &m)
@@ -164,6 +254,7 @@ void setup(void)
     test_rotation_accuracy();
     test_eulers();
     missing_rotations();
+    test_rotate_inverse();
     hal.console->println("rotation unit tests done\n");
 }
 

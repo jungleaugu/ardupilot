@@ -15,13 +15,16 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __EXTERNALLED_H__
-#define __EXTERNALLED_H__
+#pragma once
 
 #include <AP_Common/AP_Common.h>
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Param/AP_Param.h>
+
 #include "NotifyDevice.h"
+
+#define HIGH 1
+#define LOW 0
 
 class ExternalLED: public NotifyDevice
 {
@@ -31,7 +34,7 @@ public:
 
     // initialise the LED driver
     bool init(void);
-    
+
     // should be called at 50Hz
     void update(void);
 
@@ -70,5 +73,3 @@ private:
     void motor_led1(bool on_off);
     void motor_led2(bool on_off);
 };
-
-#endif // __EXTERNALLED_H__

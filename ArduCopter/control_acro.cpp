@@ -3,14 +3,15 @@
 
 
 /*
- * control_acro.pde - init and run calls for acro flight mode
+ * Init and run calls for acro flight mode
  */
 
 // acro_init - initialise acro controller
 bool Copter::acro_init(bool ignore_checks)
 {
    // if landed and the mode we're switching from does not have manual throttle and the throttle stick is too high
-   if (motors.armed() && ap.land_complete && !mode_has_manual_throttle(control_mode) && (g.rc_3.control_in > get_non_takeoff_throttle())) {
+   if (motors.armed() && ap.land_complete && !mode_has_manual_throttle(control_mode) &&
+           (get_pilot_desired_throttle(channel_throttle->get_control_in(), g2.acro_thr_mid) > get_non_takeoff_throttle())) {
        return false;
    }
    // set target altitude to zero for reporting
@@ -24,23 +25,25 @@ bool Copter::acro_init(bool ignore_checks)
 void Copter::acro_run()
 {
     float target_roll, target_pitch, target_yaw;
-    int16_t pilot_throttle_scaled;
+    float pilot_throttle_scaled;
 
-    // if motors not running reset angle targets
-    if(!motors.armed() || ap.throttle_zero) {
+    // if not armed set throttle to zero and exit immediately
+    if (!motors.armed() || ap.throttle_zero || !motors.get_interlock()) {
+        motors.set_desired_spool_state(AP_Motors::DESIRED_SPIN_WHEN_ARMED);
         attitude_control.set_throttle_out_unstabilized(0,true,g.throttle_filt);
-        // slow start if landed
-        if (ap.land_complete) {
-            motors.slow_start(true);
-        }
         return;
     }
 
+    // clear landing flag
+    set_land_complete(false);
+
+    motors.set_desired_spool_state(AP_Motors::DESIRED_THROTTLE_UNLIMITED);
+
     // convert the input to the desired body frame rate
-    get_pilot_desired_angle_rates(channel_roll->control_in, channel_pitch->control_in, channel_yaw->control_in, target_roll, target_pitch, target_yaw);
+    get_pilot_desired_angle_rates(channel_roll->get_control_in(), channel_pitch->get_control_in(), channel_yaw->get_control_in(), target_roll, target_pitch, target_yaw);
 
     // get pilot's desired throttle
-    pilot_throttle_scaled = get_pilot_desired_throttle(channel_throttle->control_in);
+    pilot_throttle_scaled = get_pilot_desired_throttle(channel_throttle->get_control_in(), g2.acro_thr_mid);
 
     // run attitude controller
     attitude_control.input_rate_bf_roll_pitch_yaw(target_roll, target_pitch, target_yaw);
@@ -58,7 +61,7 @@ void Copter::get_pilot_desired_angle_rates(int16_t roll_in, int16_t pitch_in, in
     Vector3f rate_ef_level, rate_bf_level, rate_bf_request;
 
     // apply circular limit to pitch and roll inputs
-    float total_in = pythagorous2((float)pitch_in, (float)roll_in);
+    float total_in = norm(pitch_in, roll_in);
 
     if (total_in > ROLL_PITCH_INPUT_MAX) {
         float ratio = (float)ROLL_PITCH_INPUT_MAX / total_in;
@@ -67,7 +70,7 @@ void Copter::get_pilot_desired_angle_rates(int16_t roll_in, int16_t pitch_in, in
     }
     
     // calculate roll, pitch rate requests
-    if (g.acro_expo <= 0) {
+    if (g.acro_rp_expo <= 0) {
         rate_bf_request.x = roll_in * g.acro_rp_p;
         rate_bf_request.y = pitch_in * g.acro_rp_p;
     } else {
@@ -75,25 +78,42 @@ void Copter::get_pilot_desired_angle_rates(int16_t roll_in, int16_t pitch_in, in
         float rp_in, rp_in3, rp_out;
 
         // range check expo
-        if (g.acro_expo > 1.0f) {
-            g.acro_expo = 1.0f;
+        if (g.acro_rp_expo > 1.0f) {
+            g.acro_rp_expo = 1.0f;
         }
 
         // roll expo
         rp_in = float(roll_in)/ROLL_PITCH_INPUT_MAX;
         rp_in3 = rp_in*rp_in*rp_in;
-        rp_out = (g.acro_expo * rp_in3) + ((1 - g.acro_expo) * rp_in);
+        rp_out = (g.acro_rp_expo * rp_in3) + ((1.0f - g.acro_rp_expo) * rp_in);
         rate_bf_request.x = ROLL_PITCH_INPUT_MAX * rp_out * g.acro_rp_p;
 
         // pitch expo
         rp_in = float(pitch_in)/ROLL_PITCH_INPUT_MAX;
         rp_in3 = rp_in*rp_in*rp_in;
-        rp_out = (g.acro_expo * rp_in3) + ((1 - g.acro_expo) * rp_in);
+        rp_out = (g.acro_rp_expo * rp_in3) + ((1.0f - g.acro_rp_expo) * rp_in);
         rate_bf_request.y = ROLL_PITCH_INPUT_MAX * rp_out * g.acro_rp_p;
     }
 
     // calculate yaw rate request
-    rate_bf_request.z = yaw_in * g.acro_yaw_p;
+    if (g.acro_rp_expo <= 0) {
+        rate_bf_request.z = yaw_in * g.acro_yaw_p;
+    } else {
+        // expo variables
+        float y_in, y_in3, y_out;
+
+        // range check expo
+        if (g2.acro_y_expo > 1.0f || g2.acro_y_expo < 0.5f) {
+            g2.acro_y_expo = 1.0f;
+        }
+
+        // yaw expo
+        y_in = float(yaw_in)/ROLL_PITCH_INPUT_MAX;
+        y_in3 = y_in*y_in*y_in;
+        y_out = (g2.acro_y_expo * y_in3) + ((1.0f - g2.acro_y_expo) * y_in);
+        rate_bf_request.z = ROLL_PITCH_INPUT_MAX * y_out * g.acro_yaw_p;
+    }
+
 
     // calculate earth frame rate corrections to pull the copter back to level while in ACRO mode
 

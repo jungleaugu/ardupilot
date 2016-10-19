@@ -20,11 +20,10 @@
 //
 //  Swift Binary Protocol format: http://docs.swift-nav.com/
 //
-
-#ifndef __AP_GPS_SBP_H__
-#define __AP_GPS_SBP_H__
+#pragma once
 
 #include "AP_GPS.h"
+#include "GPS_Backend.h"
 
 class AP_GPS_SBP : public AP_GPS_Backend
 {
@@ -36,7 +35,7 @@ public:
     // Methods
     bool read();
 
-    void inject_data(uint8_t *data, uint8_t len);
+    void inject_data(const uint8_t *data, uint16_t len) override;
 
     static bool _detect(struct SBP_detect_state &state, uint8_t data);
 
@@ -169,5 +168,3 @@ private:
    
 
 };
-
-#endif // __AP_GPS_SBP_H__

@@ -37,7 +37,7 @@ static const struct {
 
 static struct Location location_from_point(Vector2f pt)
 {
-    struct Location loc = {0};
+    struct Location loc = {};
     loc.lat = pt.x * 1.0e7f;
     loc.lng = pt.y * 1.0e7f;
     return loc;
@@ -97,7 +97,7 @@ static const struct {
 
 static void test_offset(void)
 {
-    struct Location loc;
+    struct Location loc {};
 
     loc.lat = -35*1.0e7f;
     loc.lng = 149*1.0e7f;
@@ -117,7 +117,7 @@ static void test_offset(void)
  */
 static void test_accuracy(void)
 {
-    struct Location loc;
+    struct Location loc {};
 
     loc.lat = 0.0e7f;
     loc.lng = -120.0e7f;
@@ -194,9 +194,9 @@ static const struct {
 static const struct {
     float v, wv;
 } wrap_PI_tests[] = {
-    { 0.2f*PI,            0.2f*PI },
-    { 0.2f*PI + 100*PI,  0.2f*PI },
-    { -0.2f*PI - 100*PI,  -0.2f*PI },
+    { 0.2f*M_PI,            0.2f*M_PI },
+    { 0.2f*M_PI + 100*M_PI,  0.2f*M_PI },
+    { -0.2f*M_PI - 100*M_PI,  -0.2f*M_PI },
 };
 
 static void test_wrap_cd(void)

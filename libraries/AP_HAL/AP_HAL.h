@@ -10,8 +10,6 @@
 
 /* HAL Module Classes (all pure virtual) */
 #include "UARTDriver.h"
-#include "I2CDriver.h"
-#include "SPIDriver.h"
 #include "AnalogIn.h"
 #include "Storage.h"
 #include "GPIO.h"
@@ -20,6 +18,7 @@
 #include "Scheduler.h"
 #include "Semaphores.h"
 #include "Util.h"
+#include "OpticalFlow.h"
 
 #include "utility/Print.h"
 #include "utility/Stream.h"

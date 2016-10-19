@@ -118,10 +118,16 @@ extern const AP_HAL::HAL& hal;
 
 // Define tuning parameters
 const AP_Param::GroupInfo NavEKF::var_info[] = {
+    // @Param: ENABLE
+    // @DisplayName: Enable EKF1
+    // @Description: This enables EKF1 to be disabled when using alternative algorithms. When disabling it, the alternate EKF2 estimator must be enabled by setting EK2_ENABLED = 1 and flight control algorithms must be set to use the alternative estimator by setting AHRS_EKF_TYPE = 2.
+    // @Values: 0:Disabled, 1:Enabled
+    // @User: Advanced
+    AP_GROUPINFO_FLAGS("ENABLE", 34, NavEKF, _enable, 0, AP_PARAM_FLAG_ENABLE),
 
     // @Param: VELNE_NOISE
     // @DisplayName: GPS horizontal velocity measurement noise scaler
-    // @Description: This is the scaler that is applied to the speed accuracy reported by the receiver to estimate the horizontal velocity observation noise. If the model of receiver used does not provide a speed accurcy estimate, then a speed acuracy of 1 is assumed. Increasing it reduces the weighting on these measurements.
+    // @Description: This is the scaler that is applied to the speed accuracy reported by the receiver to estimate the horizontal velocity observation noise. If the model of receiver used does not provide a speed accurcy estimate, then a speed accuracy of 1 is assumed. Increasing it reduces the weighting on these measurements.
     // @Range: 0.05 5.0
     // @Increment: 0.05
     // @User: Advanced
@@ -129,7 +135,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] = {
 
     // @Param: VELD_NOISE
     // @DisplayName: GPS vertical velocity measurement noise scaler
-    // @Description: This is the scaler that is applied to the speed accuracy reported by the receiver to estimate the vertical velocity observation noise. If the model of receiver used does not provide a speed accurcy estimate, then a speed acuracy of 1 is assumed. Increasing it reduces the weighting on this measurement.
+    // @Description: This is the scaler that is applied to the speed accuracy reported by the receiver to estimate the vertical velocity observation noise. If the model of receiver used does not provide a speed accurcy estimate, then a speed accuracy of 1 is assumed. Increasing it reduces the weighting on this measurement.
     // @Range: 0.05 5.0
     // @Increment: 0.05
     // @User: Advanced
@@ -327,8 +333,8 @@ const AP_Param::GroupInfo NavEKF::var_info[] = {
 
     // @Param: GND_GRADIENT
     // @DisplayName: Terrain Gradient % RMS
-    // @Description: This parameter sets the RMS terrain gradient percentage assumed by the terrain height estimation. Terrain height can be estimated using optical flow and/or range finder sensor data if fitted. Smaller values cause the terrain height estimate to be slower to respond to changes in measurement. Larger values casue the terrain height estimate to be faster to respond, but also more noisy. Generally this value can be reduced if operating over very flat terrain and increased if operating over uneven terrain.
-    // @Range: 1 - 50
+    // @Description: This parameter sets the RMS terrain gradient percentage assumed by the terrain height estimation. Terrain height can be estimated using optical flow and/or range finder sensor data if fitted. Smaller values cause the terrain height estimate to be slower to respond to changes in measurement. Larger values cause the terrain height estimate to be faster to respond, but also more noisy. Generally this value can be reduced if operating over very flat terrain and increased if operating over uneven terrain.
+    // @Range: 1 50
     // @Increment: 1
     // @User: Advanced
     AP_GROUPINFO("GND_GRADIENT",    25, NavEKF, _gndGradientSigma, 2),
@@ -336,7 +342,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] = {
     // @Param: FLOW_NOISE
     // @DisplayName: Optical flow measurement noise (rad/s)
     // @Description: This is the RMS value of noise and errors in optical flow measurements. Increasing it reduces the weighting on these measurements.
-    // @Range: 0.05 - 1.0
+    // @Range: 0.05 1.0
     // @Increment: 0.05
     // @User: Advanced
     // @Units: rad/s
@@ -345,7 +351,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] = {
     // @Param: FLOW_GATE
     // @DisplayName: Optical Flow measurement gate size
     // @Description: This parameter sets the number of standard deviations applied to the optical flow innovation consistency check. Decreasing it makes it more likely that good measurements will be rejected. Increasing it makes it more likely that bad measurements will be accepted.
-    // @Range: 1 - 100
+    // @Range: 1 100
     // @Increment: 1
     // @User: Advanced
     AP_GROUPINFO("FLOW_GATE",    27, NavEKF, _flowInnovGate, FLOW_GATE_DEFAULT),
@@ -353,7 +359,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] = {
     // @Param: FLOW_DELAY
     // @DisplayName: Optical Flow measurement delay (msec)
     // @Description: This is the number of msec that the optical flow measurements lag behind the inertial measurements. It is the time from the end of the optical flow averaging period and does not include the time delay due to the 100msec of averaging within the flow sensor.
-    // @Range: 0 - 500
+    // @Range: 0 500
     // @Increment: 10
     // @User: Advanced
     // @Units: milliseconds
@@ -362,7 +368,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] = {
     // @Param: RNG_GATE
     // @DisplayName: Range finder measurement gate size
     // @Description: This parameter sets the number of standard deviations applied to the range finder innovation consistency check. Decreasing it makes it more likely that good measurements will be rejected. Increasing it makes it more likely that bad measurements will be accepted.
-    // @Range: 1 - 100
+    // @Range: 1 100
     // @Increment: 1
     // @User: Advanced
     AP_GROUPINFO("RNG_GATE",    29, NavEKF, _rngInnovGate, 5),
@@ -370,7 +376,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] = {
     // @Param: MAX_FLOW
     // @DisplayName: Maximum valid optical flow rate
     // @Description: This parameter sets the magnitude maximum optical flow rate in rad/sec that will be accepted by the filter
-    // @Range: 1.0 - 4.0
+    // @Range: 1.0 4.0
     // @Increment: 0.1
     // @User: Advanced
     AP_GROUPINFO("MAX_FLOW",    30, NavEKF, _maxFlowRate, 2.5f),
@@ -384,7 +390,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] = {
 
     // @Param: ALT_SOURCE
     // @DisplayName: Primary height source
-    // @Description: This parameter controls which height sensor is used by the EKF during optical flow navigation (when EKF_GPS_TYPE = 3). A value of will 0 cause it to always use baro altitude. A value of 1 will casue it to use range finder if available.
+    // @Description: This parameter controls which height sensor is used by the EKF during optical flow navigation (when EKF_GPS_TYPE = 3). A value of will 0 cause it to always use baro altitude. A value of 1 will cause it to use range finder if available.
     // @Values: 0:Use Baro, 1:Use Range Finder
     // @User: Advanced
     AP_GROUPINFO("ALT_SOURCE",    32, NavEKF, _altSource, 1),
@@ -396,12 +402,7 @@ const AP_Param::GroupInfo NavEKF::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("GPS_CHECK",    33, NavEKF, _gpsCheck, 31),
 
-    // @Param: ENABLE
-    // @DisplayName: Enable EKF1
-    // @Description: This enables EKF1 to be disabled when using alternative algorithms. When disabling it, the alternate EKF2 estimator must be enabled by setting EK2_ENABLED = 1 and flight control algorithms must be set to use the alternative estimator by setting AHRS_EKF_TYPE = 2.
-    // @Values: 0:Disabled, 1:Enabled
-    // @User: Advanced
-    AP_GROUPINFO("ENABLE", 34, NavEKF, _enable, 1),
+    // **NOTE** index 34 is "Enable" and is at the top for AP_PARAM_FLAG_ENABLE
 
     AP_GROUPEND
 };
@@ -422,6 +423,11 @@ bool NavEKF::InitialiseFilterDynamic(void)
         return false;
     }
     if (core == nullptr) {
+        if (hal.util->available_memory() < 4096 + sizeof(*core)) {
+            _enable.set(0);
+            GCS_MAVLINK::send_statustext_all(MAV_SEVERITY_CRITICAL, "NavEKF: not enough memory");
+            return false;
+        }
         core = new NavEKF_core(*this, _ahrs, _baro, _rng);
         if (core == nullptr) {
             _enable.set(0);
@@ -466,15 +472,26 @@ bool NavEKF::healthy(void) const
     return core->healthy();
 }
 
-// Return the last calculated NED position relative to the reference point (m).
+// Write the last calculated North East position relative to the reference point (m).
 // If a calculated solution is not available, use the best available data and return false
 // If false returned, do not use for flight control
-bool NavEKF::getPosNED(Vector3f &pos) const
+bool NavEKF::getPosNE(Vector2f &posNE) const
 {
     if (!core) {
         return false;
     }
-    return core->getPosNED(pos);
+    return core->getPosNE(posNE);
+}
+
+// Write the last calculated Down position relative to the reference point (m).
+// If a calculated solution is not available, use the best available data and return false
+// If false returned, do not use for flight control
+bool NavEKF::getPosD(float &posD) const
+{
+    if (!core) {
+        return false;
+    }
+    return core->getPosD(posD);
 }
 
 // return NED velocity in m/s
@@ -596,12 +613,12 @@ void NavEKF::getMagXYZ(Vector3f &magXYZ) const
 
 // Return estimated magnetometer offsets
 // Return true if magnetometer offsets are valid
-bool NavEKF::getMagOffsets(Vector3f &magOffsets) const
+bool NavEKF::getMagOffsets(uint8_t mag_idx, Vector3f &magOffsets) const
 {
     if (!core) {
         return false;
     }
-    return core->getMagOffsets(magOffsets);
+    return core->getMagOffsets(mag_idx, magOffsets);
 }
 
 // Return the last calculated latitude, longitude and height in WGS-84
@@ -767,7 +784,7 @@ void NavEKF::setTouchdownExpected(bool val)
   7 = badly conditioned synthetic sideslip fusion
   7 = filter is not initialised
 */
-void NavEKF::getFilterFaults(uint8_t &faults) const
+void NavEKF::getFilterFaults(uint16_t &faults) const
 {
     if (core) {
         core->getFilterFaults(faults);
