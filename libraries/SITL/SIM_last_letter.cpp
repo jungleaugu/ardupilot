@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -19,6 +18,8 @@
 
 #include "SIM_last_letter.h"
 
+#if HAL_SIM_LAST_LETTER_ENABLED
+
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -30,11 +31,10 @@ extern const AP_HAL::HAL& hal;
 
 namespace SITL {
 
-last_letter::last_letter(const char *home_str, const char *_frame_str) :
-    Aircraft(home_str, _frame_str),
+last_letter::last_letter(const char *_frame_str) :
+    Aircraft(_frame_str),
     last_timestamp_us(0),
-    sock(true),
-    frame_str(_frame_str)
+    sock(true)
 {
     // try to bind to a specific port so that if we restart ArduPilot
     // last_letter keeps sending us packets. Not strictly necessary but
@@ -56,7 +56,7 @@ void last_letter::start_last_letter(void)
     if (child_pid == 0) {
       // in child
       close(0);
-      open("/dev/null", O_RDONLY);
+      open("/dev/null", O_RDONLY|O_CLOEXEC);
       for (uint8_t i=3; i<100; i++) {
           close(i);
       }
@@ -65,7 +65,7 @@ void last_letter::start_last_letter(void)
                        "last_letter",
                        "gazebo.launch",
                        "ArduPlane:=true",
-                       NULL);
+                       nullptr);
       if (ret != 0) {
           perror("roslaunch");
       }
@@ -131,8 +131,11 @@ void last_letter::update(const struct sitl_input &input)
     sync_frame_time();
 
     update_position();
+    time_advance();
     // update magnetic field
     update_mag_field_bf();
 }
 
 } // namespace SITL
+
+#endif  // HAL_SIM_LAST_LETTER_ENABLED

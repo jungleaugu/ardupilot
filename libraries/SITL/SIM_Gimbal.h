@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,6 +17,14 @@
 */
 
 #pragma once
+
+#include <AP_HAL/AP_HAL_Boards.h>
+
+#ifndef HAL_SIM_GIMBAL_ENABLED
+#define HAL_SIM_GIMBAL_ENABLED (CONFIG_HAL_BOARD == HAL_BOARD_SITL)
+#endif
+
+#if HAL_SIM_GIMBAL_ENABLED
 
 #include <AP_HAL/utility/Socket.h>
 
@@ -103,7 +110,14 @@ private:
         uint8_t seq;
     } mavlink;
 
+    uint32_t param_send_last_ms;
+    uint8_t param_send_idx;
+
     void send_report(void);
+    void param_send(const struct gimbal_param *p);
+    struct gimbal_param *param_find(const char *name);
 };
 
 }  // namespace SITL
+
+#endif  // HAL_SIM_GIMBAL_ENABLED

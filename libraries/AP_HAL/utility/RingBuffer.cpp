@@ -5,13 +5,16 @@
 
 ByteBuffer::ByteBuffer(uint32_t _size)
 {
-    buf = (uint8_t*)malloc(_size);
+    buf = (uint8_t*)calloc(1, _size);
     size = buf ? _size : 0;
+    external_buf = false;
 }
 
 ByteBuffer::~ByteBuffer(void)
 {
-    free(buf);
+    if (!external_buf) {
+        free(buf);
+    }
 }
 
 /*
@@ -19,10 +22,14 @@ ByteBuffer::~ByteBuffer(void)
  */
 bool ByteBuffer::set_size(uint32_t _size)
 {
+    if (external_buf) {
+        // resize not supported with external buffer
+        return false;
+    }
     head = tail = 0;
     if (_size != size) {
         free(buf);
-        buf = (uint8_t*)malloc(_size);
+        buf = (uint8_t*)calloc(1, _size);
         if (!buf) {
             size = 0;
             return false;
@@ -34,10 +41,30 @@ bool ByteBuffer::set_size(uint32_t _size)
     return true;
 }
 
+/*
+  set buffer size, accepting a smaller size if desired size isn't achievable
+ */
+bool ByteBuffer::set_size_best(uint32_t _size)
+{
+    while (_size > 0) {
+        if (set_size(_size)) {
+            return true;
+        }
+        _size = (3 * _size)/4;
+    }
+    return false;
+}
+
 uint32_t ByteBuffer::available(void) const
 {
-    uint32_t _tail;
-    return ((head > (_tail=tail))? (size - head) + _tail: _tail - head);
+    /* use a copy on stack to avoid race conditions of @tail being updated by
+     * the writer thread */
+    uint32_t _tail = tail;
+
+    if (head > _tail) {
+        return size - head + _tail;
+    }
+    return _tail - head;
 }
 
 void ByteBuffer::clear(void)
@@ -47,11 +74,25 @@ void ByteBuffer::clear(void)
 
 uint32_t ByteBuffer::space(void) const
 {
+    if (size == 0) {
+        return 0;
+    }
+
+    /* use a copy on stack to avoid race conditions of @head being updated by
+     * the reader thread */
     uint32_t _head = head;
-    return size ? (_head > tail ? 0 : size) + _head - tail - 1 : 0;
+    uint32_t ret = 0;
+
+    if (_head <= tail) {
+        ret = size;
+    }
+
+    ret += _head - tail - 1;
+
+    return ret;
 }
 
-bool ByteBuffer::empty(void) const
+bool ByteBuffer::is_empty(void) const
 {
     return head == tail;
 }
@@ -114,6 +155,13 @@ uint8_t ByteBuffer::peekiovec(ByteBuffer::IoVec iovec[2], uint32_t len)
     }
 
     auto b = readptr(n);
+    if (n == 0) {
+        iovec[0].data = buf;
+        iovec[0].len = len;
+        iovec[1].data = nullptr;
+        iovec[1].len = 0;
+        return 1;
+    }
     if (n > len) {
         n = len;
     }
@@ -194,6 +242,22 @@ uint32_t ByteBuffer::read(uint8_t *data, uint32_t len)
     uint32_t ret = peekbytes(data, len);
     advance(ret);
     return ret;
+}
+
+bool ByteBuffer::read_byte(uint8_t *data)
+{
+    if (!data) {
+        return false;
+    }
+
+    int16_t ret = peek(0);
+    if (ret < 0) {
+        return false;
+    }
+
+    *data = ret;
+
+    return advance(1);
 }
 
 /*

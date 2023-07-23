@@ -23,13 +23,13 @@ static const uint8_t chan_pru_map[]= {10,8,11,9,7,6,5,4,3,2,1,0};               
 
 static void catch_sigbus(int sig)
 {
-    AP_HAL::panic("RCOutput.cpp:SIGBUS error gernerated\n");
+    AP_HAL::panic("RCOutput.cpp:SIGBUS error generated\n");
 }
 void RCOutput_PRU::init()
 {
     uint32_t mem_fd;
     signal(SIGBUS,catch_sigbus);
-    mem_fd = open("/dev/mem", O_RDWR|O_SYNC);
+    mem_fd = open("/dev/mem", O_RDWR|O_SYNC|O_CLOEXEC);
     sharedMem_cmd = (struct pwm_cmd *) mmap(0, 0x1000, PROT_READ|PROT_WRITE,
                                             MAP_SHARED, mem_fd, RCOUT_PRUSS_SHAREDRAM_BASE);
     close(mem_fd);
@@ -99,6 +99,9 @@ void RCOutput_PRU::cork(void)
 
 void RCOutput_PRU::push(void)
 {
+    if (!corked) {
+        return;
+    }
     corked = false;
     for (uint8_t i=0; i<ARRAY_SIZE(pending); i++) {
         if (pending_mask & (1U << i)) {

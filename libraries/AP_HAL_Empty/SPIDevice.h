@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
  * Copyright (C) 2015-2016  Intel Corporation. All rights reserved.
  *
@@ -57,7 +56,7 @@ public:
     }
 
     /* See AP_HAL::Device::get_semaphore() */
-    AP_HAL::Semaphore *get_semaphore()
+    AP_HAL::Semaphore *get_semaphore() override
     {
         return &_semaphore;
     }

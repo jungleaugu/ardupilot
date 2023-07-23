@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -138,7 +137,6 @@ private:
 
     // Function related to Gauss Newton Least square regression process
     float calc_residual(const Vector3f& sample, const struct param_t& params) const;
-    float calc_mean_squared_residuals() const;
     float calc_mean_squared_residuals(const struct param_t& params) const;
     void calc_jacob(const Vector3f& sample, const struct param_t& params, VectorP& ret) const;
     void run_fit(uint8_t max_iterations, float& fitness);

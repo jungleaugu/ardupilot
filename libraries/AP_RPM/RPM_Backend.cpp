@@ -1,4 +1,3 @@
-// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,10 +13,11 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <AP_Common/AP_Common.h>
-#include <AP_HAL/AP_HAL.h>
-#include "AP_RPM.h"
 #include "RPM_Backend.h"
+
+#if AP_RPM_ENABLED
+
+#include "AP_RPM.h"
 
 /*
   base class constructor. 
@@ -26,4 +26,7 @@ AP_RPM_Backend::AP_RPM_Backend(AP_RPM &_ap_rpm, uint8_t instance, AP_RPM::RPM_St
         ap_rpm(_ap_rpm),
         state(_state) 
 {
+    state.instance = instance;
 }
+
+#endif  // AP_RPM_ENABLED

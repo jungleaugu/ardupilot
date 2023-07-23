@@ -1,4 +1,3 @@
-// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -34,10 +33,10 @@ public:
     };
 
     // apply - Add a new raw value to the filter, retrieve the filtered result
-    virtual T        apply(T sample);
+    virtual T        apply(T sample) override;
 
     // reset - clear the filter
-    virtual void        reset();
+    virtual void        reset() override;
 
 protected:
     // the number of samples in the filter, maxes out at size of the filter

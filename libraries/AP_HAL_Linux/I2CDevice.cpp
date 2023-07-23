@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
  * Copyright (C) 2015-2016  Intel Corporation. All rights reserved.
  *
@@ -57,9 +56,9 @@
 #define I2C_RDRW_IOCTL_MAX_MSGS 42
 #endif
 
-namespace Linux {
+extern const AP_HAL::HAL& hal;
 
-static const AP_HAL::HAL &hal = AP_HAL::get_HAL();
+namespace Linux {
 
 /*
  * TODO: move to Util or other upper class to be used by others
@@ -106,7 +105,7 @@ I2CBus::~I2CBus()
 
 void I2CBus::start_cb()
 {
-    sem.take(HAL_SEMAPHORE_BLOCK_FOREVER);
+    sem.take_blocking();
 }
 
 void I2CBus::end_cb()
@@ -138,6 +137,14 @@ int I2CBus::open(uint8_t n)
     return fd;
 }
 
+I2CDevice::I2CDevice(I2CBus &bus, uint8_t address)
+    : _bus(bus)
+    , _address(address)
+{
+    set_device_bus(bus.bus);
+    set_device_address(address);
+}
+    
 I2CDevice::~I2CDevice()
 {
     // Unregister itself from the I2CDeviceManager
@@ -147,10 +154,13 @@ I2CDevice::~I2CDevice()
 bool I2CDevice::transfer(const uint8_t *send, uint32_t send_len,
                          uint8_t *recv, uint32_t recv_len)
 {
+    if (_split_transfers && send_len > 0 && recv_len > 0) {
+        return transfer(send, send_len, nullptr, 0) &&
+            transfer(nullptr, 0, recv, recv_len);
+    }
+
     struct i2c_msg msgs[2] = { };
     unsigned nmsgs = 0;
-
-    assert(_bus.fd >= 0);
 
     if (send && send_len != 0) {
         msgs[nmsgs].addr = _address;
@@ -332,7 +342,10 @@ I2CDeviceManager::get_device(std::vector<const char *> devpaths, uint8_t address
 }
 
 AP_HAL::OwnPtr<AP_HAL::I2CDevice>
-I2CDeviceManager::get_device(uint8_t bus, uint8_t address)
+I2CDeviceManager::get_device(uint8_t bus, uint8_t address,
+                             uint32_t bus_clock,
+                             bool use_smbus,
+                             uint32_t timeout_ms)
 {
     for (uint8_t i = 0, n = _buses.size(); i < n; i++) {
         if (_buses[i]->bus == bus) {
@@ -374,8 +387,6 @@ I2CDeviceManager::_create_device(I2CBus &b, uint8_t address) const
 
 void I2CDeviceManager::_unregister(I2CBus &b)
 {
-    assert(b.ref > 0);
-
     if (--b.ref > 0) {
         return;
     }
@@ -389,4 +400,41 @@ void I2CDeviceManager::_unregister(I2CBus &b)
     }
 }
 
+void I2CDeviceManager::teardown()
+{
+    for (auto it = _buses.begin(); it != _buses.end(); it++) {
+        /* Try to stop thread - it may not even be started yet */
+        (*it)->thread.stop();
+    }
+
+    for (auto it = _buses.begin(); it != _buses.end(); it++) {
+        /* Try to join thread - failing is normal if thread was not started */
+        (*it)->thread.join();
+    }
+}
+
+/*
+  get mask of bus numbers for all configured I2C buses
+*/
+uint32_t I2CDeviceManager::get_bus_mask(void) const
+{
+    return HAL_LINUX_I2C_BUS_MASK;
+}
+
+/*
+  get mask of bus numbers for all configured internal I2C buses
+*/
+uint32_t I2CDeviceManager::get_bus_mask_internal(void) const
+{
+    return HAL_LINUX_I2C_INTERNAL_BUS_MASK;
+}
+
+/*
+  get mask of bus numbers for all configured external I2C buses
+*/
+uint32_t I2CDeviceManager::get_bus_mask_external(void) const
+{
+    return HAL_LINUX_I2C_EXTERNAL_BUS_MASK;
+}
+    
 }

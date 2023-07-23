@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -29,14 +28,14 @@ namespace SITL {
  */
 class SingleCopter : public Aircraft {
 public:
-    SingleCopter(const char *home_str, const char *frame_str);
+    SingleCopter(const char *frame_str);
 
     /* update model by one time step */
-    void update(const struct sitl_input &input);
+    void update(const struct sitl_input &input) override;
 
     /* static object creator */
-    static Aircraft *create(const char *home_str, const char *frame_str) {
-        return new SingleCopter(home_str, frame_str);
+    static Aircraft *create(const char *frame_str) {
+        return new SingleCopter(frame_str);
     }
 
 private:

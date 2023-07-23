@@ -1,4 +1,3 @@
-// -*- tab-width: 8; Mode: C++; c-basic-offset: 8; indent-tabs-mode: -*- t -*-
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -19,6 +18,8 @@
  */
 
 #pragma once
+
+#include <stdint.h>
 
 /*
  * Decoder for SRXL protocol

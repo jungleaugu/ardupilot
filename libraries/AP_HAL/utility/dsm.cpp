@@ -1,4 +1,3 @@
-// -*- tab-width: 8; Mode: C++; c-basic-offset: 8; indent-tabs-mode: -*- t -*-
 /*
   DSM decoder, based on src/modules/px4iofirmware/dsm.c from PX4Firmware
   modified for use in AP_HAL_* by Andrew Tridgell
@@ -37,7 +36,6 @@
  ****************************************************************************/
 
 #include <stdint.h>
-#include <stdbool.h>
 #include <stdio.h>
 
 #include "dsm.h"
@@ -185,7 +183,7 @@ dsm_guess_format(bool reset, const uint8_t dsm_frame[16])
 	}
 
 	/* call ourselves to reset our state ... we have to try again */
-	debug("DSM: format detect fail, 10: 0x%08x %d 11: 0x%08x %d", cs10, votes10, cs11, votes11);
+	debug("DSM: format detect fail, 10: 0x%08x %u 11: 0x%08x %u", cs10, votes10, cs11, votes11);
 	dsm_guess_format(true, dsm_frame);
 }
 
@@ -283,6 +281,7 @@ dsm_decode(uint64_t frame_time, const uint8_t dsm_frame[16], uint16_t *values, u
 
 		case 2:
 			channel = 1;
+            break;
 
 		default:
 			break;
@@ -465,7 +464,7 @@ static uint64_t micros64(void)
 
 int main(int argc, const char *argv[])
 {
-    int fd = open(argv[1], O_RDONLY);
+    int fd = open(argv[1], O_RDONLY|O_CLOEXEC);
     if (fd == -1) {
         perror(argv[1]);
         exit(1);
@@ -507,7 +506,7 @@ int main(int argc, const char *argv[])
         tv.tv_usec = 0;
 
         // check if any bytes are available
-        if (select(fd+1, &fds, NULL, NULL, &tv) != 1) {
+        if (select(fd+1, &fds, nullptr, nullptr, &tv) != 1) {
             break;
         }
 

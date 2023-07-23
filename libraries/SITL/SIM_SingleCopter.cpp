@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -23,8 +22,8 @@
 
 using namespace SITL;
 
-SingleCopter::SingleCopter(const char *home_str, const char *frame_str) :
-    Aircraft(home_str, frame_str)
+SingleCopter::SingleCopter(const char *frame_str) :
+    Aircraft(frame_str)
 {
     mass = 2.0f;
 
@@ -40,6 +39,7 @@ SingleCopter::SingleCopter(const char *home_str, const char *frame_str) :
     */
     thrust_scale = (mass * GRAVITY_MSS) / hover_throttle;
     frame_height = 0.1;
+    lock_step_scheduled = true;
 }
 
 /*
@@ -102,6 +102,7 @@ void SingleCopter::update(const struct sitl_input &input)
     
     // update lat/lon/altitude
     update_position();
+    time_advance();
 
     // update magnetic field
     update_mag_field_bf();

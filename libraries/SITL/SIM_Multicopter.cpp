@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -24,28 +23,31 @@
 
 using namespace SITL;
 
-MultiCopter::MultiCopter(const char *home_str, const char *frame_str) :
-    Aircraft(home_str, frame_str),
-    frame(NULL)
+MultiCopter::MultiCopter(const char *frame_str) :
+    Aircraft(frame_str)
 {
     frame = Frame::find_frame(frame_str);
-    if (frame == NULL) {
+    if (frame == nullptr) {
         printf("Frame '%s' not found", frame_str);
         exit(1);
     }
-    if (strstr(frame_str, "-fast")) {
-        frame->init(1.5, 0.5, 85, 4*radians(360));
-    } else {
-        frame->init(1.5, 0.51, 15, 4*radians(360));
-    }
+
+    frame->init(frame_str, &battery);
+
+    mass = frame->get_mass();
     frame_height = 0.1;
     ground_behavior = GROUND_BEHAVIOR_NO_MOVEMENT;
+    lock_step_scheduled = true;
 }
 
 // calculate rotational and linear accelerations
 void MultiCopter::calculate_forces(const struct sitl_input &input, Vector3f &rot_accel, Vector3f &body_accel)
 {
-    frame->calculate_forces(*this, input, rot_accel, body_accel);
+    motor_mask |= ((1U<<frame->num_motors)-1U) << frame->motor_offset;
+    frame->calculate_forces(*this, input, rot_accel, body_accel, rpm);
+
+    add_shove_forces(rot_accel, body_accel);
+    add_twist_forces(rot_accel);
 }
     
 /*
@@ -60,13 +62,19 @@ void MultiCopter::update(const struct sitl_input &input)
 
     calculate_forces(input, rot_accel, accel_body);
 
+    // estimate voltage and current
+    frame->current_and_voltage(battery_voltage, battery_current);
+
+    battery.set_current(battery_current);
+
     update_dynamics(rot_accel);
+    update_external_payload(input);
 
     // update lat/lon/altitude
     update_position();
+    time_advance();
 
     // update magnetic field
     update_mag_field_bf();
 }
-
 

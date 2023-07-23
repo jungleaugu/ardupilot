@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
  * Copyright (C) 2016  Intel Corporation. All rights reserved.
  *
@@ -18,10 +17,6 @@
 #pragma once
 
 #include "HAL.h"
-
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
-#define AP_MAIN __EXPORT ArduPilot_main
-#endif
 
 #ifndef AP_MAIN
 #define AP_MAIN main

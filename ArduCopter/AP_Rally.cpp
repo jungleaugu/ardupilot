@@ -1,4 +1,3 @@
-// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -22,9 +21,8 @@
 
 bool AP_Rally_Copter::is_valid(const Location &rally_point) const
 {
-#if AC_FENCE == ENABLED
-    Location_Class rally_loc(rally_point);
-    if (!copter.fence.check_destination_within_fence(rally_loc)) {
+#if AP_FENCE_ENABLED
+    if (!copter.fence.check_destination_within_fence(rally_point)) {
         return false;
     }
 #endif

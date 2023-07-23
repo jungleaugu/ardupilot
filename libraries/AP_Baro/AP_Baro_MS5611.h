@@ -1,18 +1,62 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 #pragma once
 
 #include "AP_Baro_Backend.h"
+
+#if AP_BARO_MS56XX_ENABLED
 
 #include <AP_HAL/AP_HAL.h>
 #include <AP_HAL/Semaphores.h>
 #include <AP_HAL/Device.h>
 
+#ifndef HAL_BARO_MS5611_I2C_ADDR
+#define HAL_BARO_MS5611_I2C_ADDR 0x77
+#endif
+
+#ifndef HAL_BARO_MS5611_I2C_ADDR2
+#define HAL_BARO_MS5611_I2C_ADDR2 0x76
+#endif
+
+#ifndef HAL_BARO_MS5607_I2C_ADDR
+#define HAL_BARO_MS5607_I2C_ADDR 0x77
+#endif
+
+#ifndef HAL_BARO_MS5837_I2C_ADDR
+#define HAL_BARO_MS5837_I2C_ADDR 0x76
+#endif
+
+#ifndef HAL_BARO_MS5637_I2C_ADDR
+#define HAL_BARO_MS5637_I2C_ADDR 0x76
+#endif
+
 class AP_Baro_MS56XX : public AP_Baro_Backend
 {
 public:
-    void update();
+    void update() override;
 
-protected:
+    enum MS56XX_TYPE {
+        BARO_MS5611 = 0,
+        BARO_MS5607 = 1,
+        BARO_MS5637 = 2,
+        BARO_MS5837 = 3
+    };
+
+    static AP_Baro_Backend *probe_5611(AP_Baro &baro, AP_HAL::OwnPtr<AP_HAL::Device> dev) {
+        return probe(baro, std::move(dev), BARO_MS5611);
+    }
+    static AP_Baro_Backend *probe_5607(AP_Baro &baro, AP_HAL::OwnPtr<AP_HAL::Device> dev) {
+        return probe(baro, std::move(dev), BARO_MS5607);
+    }
+    static AP_Baro_Backend *probe_5637(AP_Baro &baro, AP_HAL::OwnPtr<AP_HAL::Device> dev) {
+        return probe(baro, std::move(dev), BARO_MS5637);
+    }
+    static AP_Baro_Backend *probe_5837(AP_Baro &baro, AP_HAL::OwnPtr<AP_HAL::Device> dev) {
+        return probe(baro, std::move(dev), BARO_MS5837);
+    }
+
+    static AP_Baro_Backend *probe(AP_Baro &baro, AP_HAL::OwnPtr<AP_HAL::Device> dev, enum MS56XX_TYPE ms56xx_type=BARO_MS5611);
+
+private:
+
     /*
      * Update @accum and @count with the new sample in @val, taking into
      * account a maximum number of samples given by @max_count; in case
@@ -21,24 +65,23 @@ protected:
     static void _update_and_wrap_accumulator(uint32_t *accum, uint32_t val,
                                              uint8_t *count, uint8_t max_count);
 
-    AP_Baro_MS56XX(AP_Baro &baro, AP_HAL::OwnPtr<AP_HAL::Device> dev);
-    void _init();
+    AP_Baro_MS56XX(AP_Baro &baro, AP_HAL::OwnPtr<AP_HAL::Device> dev, enum MS56XX_TYPE ms56xx_type);
 
-    virtual void _calculate() = 0;
-    virtual bool _read_prom(uint16_t prom[8]);
+    bool _init();
+
+    void _calculate_5611();
+    void _calculate_5607();
+    void _calculate_5637();
+    void _calculate_5837();
+    bool _read_prom_5611(uint16_t prom[8]);
+    bool _read_prom_5637(uint16_t prom[8]);
 
     uint16_t _read_prom_word(uint8_t word);
     uint32_t _read_adc();
 
-    bool _timer();
+    void _timer();
 
     AP_HAL::OwnPtr<AP_HAL::Device> _dev;
-
-    /*
-     * Synchronize access to _accum between thread sampling the HW and main
-     * thread using the values
-     */
-    AP_HAL::Semaphore *_sem;
 
     /* Shared values between thread sampling the HW and main thread */
     struct {
@@ -50,7 +93,6 @@ protected:
 
     uint8_t _state;
     uint8_t _instance;
-    uint32_t _last_cmd_usec;
 
     /* Last compensated values from accumulated sample */
     float _D1, _D2;
@@ -59,29 +101,10 @@ protected:
     struct {
         uint16_t c1, c2, c3, c4, c5, c6;
     } _cal_reg;
+
+    bool _discard_next;
+
+    enum MS56XX_TYPE _ms56xx_type;
 };
 
-class AP_Baro_MS5611 : public AP_Baro_MS56XX
-{
-public:
-    AP_Baro_MS5611(AP_Baro &baro, AP_HAL::OwnPtr<AP_HAL::Device> dev);
-protected:
-    void _calculate() override;
-};
-
-class AP_Baro_MS5607 : public AP_Baro_MS56XX
-{
-public:
-    AP_Baro_MS5607(AP_Baro &baro, AP_HAL::OwnPtr<AP_HAL::Device> dev);
-protected:
-    void _calculate() override;
-};
-
-class AP_Baro_MS5637 : public AP_Baro_MS56XX
-{
-public:
-    AP_Baro_MS5637(AP_Baro &baro, AP_HAL::OwnPtr<AP_HAL::Device> dev);
-protected:
-    void _calculate() override;
-    bool _read_prom(uint16_t prom[8]) override;
-};
+#endif  // AP_BARO_MS56XX_ENABLED

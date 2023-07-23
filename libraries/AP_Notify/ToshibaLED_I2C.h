@@ -16,15 +16,29 @@
  */
 #pragma once
 
-#include <AP_HAL/I2CDevice.h>
-#include "ToshibaLED.h"
+#include "AP_Notify_config.h"
 
-class ToshibaLED_I2C : public ToshibaLED
+#if AP_NOTIFY_TOSHIBALED_ENABLED
+
+#include <AP_HAL/I2CDevice.h>
+#include "RGBLed.h"
+
+class ToshibaLED_I2C : public RGBLed
 {
 public:
-    bool hw_init(void);
-    bool hw_set_rgb(uint8_t r, uint8_t g, uint8_t b);
+    ToshibaLED_I2C(uint8_t bus);
+    bool init(void) override;
+protected:
+    bool hw_set_rgb(uint8_t r, uint8_t g, uint8_t b) override;
 
 private:
     AP_HAL::OwnPtr<AP_HAL::I2CDevice> _dev;
+    void _timer(void);
+    bool _need_update;
+    struct {
+        uint8_t r, g, b;
+    } rgb;
+    uint8_t _bus;
 };
+
+#endif  // AP_NOTIFY_TOSHIBALED_ENABLED

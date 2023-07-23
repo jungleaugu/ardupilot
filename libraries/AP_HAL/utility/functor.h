@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
  * Copyright (C) 2015  Intel Corporation. All rights reserved.
  *
@@ -60,6 +59,10 @@ public:
     inline bool operator==(const Functor<RetType, Args...>& rhs)
     {
         return _obj == rhs._obj && _method == rhs._method;
+    }
+    inline bool operator!=(const Functor<RetType, Args...>& rhs)
+    {
+        return _obj != rhs._obj || _method != rhs._method;
     }
 
     // Allow to check if there's a method set in the Functor

@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
  * Copyright (C) 2016  Intel Corporation. All rights reserved.
  *
@@ -18,6 +17,7 @@
 #include "Thread.h"
 
 #include <alloca.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -25,7 +25,6 @@
 
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Math/AP_Math.h>
-
 #include "Scheduler.h"
 
 #define STACK_POISON 0xBEBACAFE
@@ -40,6 +39,10 @@ void *Thread::_run_trampoline(void *arg)
     Thread *thread = static_cast<Thread *>(arg);
     thread->_poison_stack();
     thread->_run();
+
+    if (thread->_auto_free) {
+        delete thread;
+    }
 
     return nullptr;
 }
@@ -81,7 +84,9 @@ void Thread::_poison_stack()
     void *stackp;
     uint32_t *p, *curr, *begin, *end;
 
-    if (pthread_getattr_np(_ctx, &attr) != 0 ||
+    // `pthread_self` should be used here since _ctx could be not initialized
+    // in a race condition.
+    if (pthread_getattr_np(pthread_self(), &attr) != 0 ||
         pthread_attr_getstack(&attr, &stackp, &stack_size) != 0 ||
         pthread_attr_getguardsize(&attr, &guard_size) != 0) {
         return;
@@ -173,7 +178,7 @@ bool Thread::start(const char *name, int policy, int prio)
     if (geteuid() == 0) {
         if ((r = pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED)) != 0 ||
             (r = pthread_attr_setschedpolicy(&attr, policy)) != 0 ||
-            (r = pthread_attr_setschedparam(&attr, &param) != 0)) {
+            (r = pthread_attr_setschedparam(&attr, &param)) != 0) {
             AP_HAL::panic("Failed to set attributes for thread '%s': %s",
                           name, strerror(r));
         }
@@ -206,6 +211,23 @@ bool Thread::is_current_thread()
     return pthread_equal(pthread_self(), _ctx);
 }
 
+bool Thread::join()
+{
+    void *ret;
+
+    if (_ctx == 0) {
+        return false;
+    }
+
+    if (pthread_join(_ctx, &ret) != 0 ||
+        (intptr_t)ret != 0) {
+        return false;
+    }
+
+    return true;
+}
+
+
 bool PeriodicThread::set_rate(uint32_t rate_hz)
 {
     if (_started || rate_hz == 0) {
@@ -223,16 +245,20 @@ bool Thread::set_stack_size(size_t stack_size)
         return false;
     }
 
-    _stack_size = stack_size;
+    _stack_size = MAX(stack_size, (size_t) PTHREAD_STACK_MIN);
 
     return true;
 }
 
 bool PeriodicThread::_run()
 {
+    if (_period_usec == 0) {
+        return false;
+    }
+
     uint64_t next_run_usec = AP_HAL::micros64() + _period_usec;
 
-    while (true) {
+    while (!_should_exit) {
         uint64_t dt = next_run_usec - AP_HAL::micros64();
         if (dt > _period_usec) {
             // we've lost sync - restart
@@ -244,6 +270,20 @@ bool PeriodicThread::_run()
 
         _task();
     }
+
+    _started = false;
+    _should_exit = false;
+
+    return true;
+}
+
+bool PeriodicThread::stop()
+{
+    if (!is_started()) {
+        return false;
+    }
+
+    _should_exit = true;
 
     return true;
 }

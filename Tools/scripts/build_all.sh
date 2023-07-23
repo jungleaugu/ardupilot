@@ -3,71 +3,28 @@
 # This helps when doing large merges
 # Andrew Tridgell, November 2011
 
-. config.mk
-
 set -e
 set -x
 
 export BUILDROOT="/tmp/all.build"
 rm -rf $BUILDROOT
 
-echo "Testing ArduPlane build"
-pushd ArduPlane
-for b in sitl linux; do
-    pwd
-    make clean
-    make $b -j4
-done
-popd
+BOARDS="sitl linux Pixhawk1"
 
-echo "Testing ArduCopter build"
-pushd ArduCopter
-for b in sitl linux; do
-    pwd
-    make clean
-    make $b -j4
-done
-popd
-
-echo "Testing APMRover build"
-pushd APMrover2
-for b in sitl linux; do
-    pwd
-    make clean
-    make $b -j4
-done
-popd
-
-echo "Testing AntennaTracker build"
-pushd AntennaTracker
-for b in sitl; do
-    pwd
-    make clean
-    make $b -j4
-done
-popd
-
-echo "Testing build of examples"
-
-examples="Tools/CPUInfo"
-for d in $examples; do
-    pushd $d
-    make clean
-    make sitl -j4
-    popd
+for b in $BOARDS; do
+    echo "Testing $b build"
+    ./waf configure --board $b
+    ./waf clean
+    ./waf
 done
 
+echo "Building Replay"
 pushd Tools/Replay
 make clean
-make linux -j4
+make
 popd
 
-test -n "$PX4_ROOT" && test -d "$PX4_ROOT" && {
-    ./Tools/scripts/build_all_px4.sh
-}
-
-test -n "$VRBRAIN_ROOT" && test -d "$VRBRAIN_ROOT" && {
-    ./Tools/scripts/build_all_vrbrain.sh
-}
+echo "Testing configure all"
+./Tools/scripts/configure_all.py
 
 exit 0

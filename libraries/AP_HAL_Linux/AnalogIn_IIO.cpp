@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 #include "AnalogIn_IIO.h"
 
 #include <AP_HAL/AP_HAL.h>
@@ -36,7 +35,7 @@ void AnalogSource_IIO::init_pins(void)
         strncpy(buf, IIO_ANALOG_IN_DIR, sizeof(buf));
         strncat(buf, AnalogSource_IIO::analog_sources[i], sizeof(buf) - strlen(buf) - 1);
 
-        fd_analog_sources[i] = open(buf, O_RDONLY | O_NONBLOCK);
+        fd_analog_sources[i] = open(buf, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
     }
 }
 
@@ -51,14 +50,16 @@ void AnalogSource_IIO::select_pin(void)
 float AnalogSource_IIO::read_average()
 {
     read_latest();
+    WITH_SEMAPHORE(_semaphore);
+
     if (_sum_count == 0) {
         return _value;
     }
-    hal.scheduler->suspend_timer_procs();
+
     _value = _sum_value / _sum_count;
     _sum_value = 0;
     _sum_count = 0;
-    hal.scheduler->resume_timer_procs();
+
     return _value;
 }
 
@@ -72,7 +73,12 @@ float AnalogSource_IIO::read_latest()
     }
 
     memset(sbuf, 0, sizeof(sbuf));
-    pread(_pin_fd, sbuf, sizeof(sbuf) - 1, 0);
+    if (pread(_pin_fd, sbuf, sizeof(sbuf) - 1, 0) < 0) {
+        _latest = 0;
+        return 0;
+    }
+    WITH_SEMAPHORE(_semaphore);
+
     _latest = atoi(sbuf) * _voltage_scaling;
     _sum_value += _latest;
     _sum_count++;
@@ -92,27 +98,22 @@ float AnalogSource_IIO::voltage_latest()
     return _latest;
 }
 
-void AnalogSource_IIO::set_pin(uint8_t pin)
+bool AnalogSource_IIO::set_pin(uint8_t pin)
 {
     if (_pin == pin) {
-        return;
+        return true;
     }
 
-    hal.scheduler->suspend_timer_procs();
+    WITH_SEMAPHORE(_semaphore);
+
     _pin = pin;
     _sum_value = 0;
     _sum_count = 0;
     _latest = 0;
     _value = 0;
     select_pin();
-    hal.scheduler->resume_timer_procs();
+    return true;
 }
-
-void AnalogSource_IIO::set_stop_pin(uint8_t p)
-{}
-
-void AnalogSource_IIO::set_settle_time(uint16_t settle_time_ms)
-{}
 
 AnalogIn_IIO::AnalogIn_IIO()
 {}

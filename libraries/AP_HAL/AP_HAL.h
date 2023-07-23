@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdint.h>
-#include <stdbool.h>
 
 #include "AP_HAL_Namespace.h"
 #include "AP_HAL_Boards.h"
@@ -17,11 +16,14 @@
 #include "RCOutput.h"
 #include "Scheduler.h"
 #include "Semaphores.h"
+#include "EventHandle.h"
 #include "Util.h"
 #include "OpticalFlow.h"
+#include "Flash.h"
+#include "DSP.h"
 
-#include "utility/Print.h"
-#include "utility/Stream.h"
+#include "CANIface.h"
+
 #include "utility/BetterStream.h"
 
 /* HAL Class definition */

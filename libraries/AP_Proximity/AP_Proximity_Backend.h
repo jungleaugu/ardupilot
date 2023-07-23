@@ -1,4 +1,3 @@
-// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,15 +14,17 @@
  */
 #pragma once
 
-#include <AP_Common/AP_Common.h>
-#include <AP_HAL/AP_HAL.h>
 #include "AP_Proximity.h"
+
+#if HAL_PROXIMITY_ENABLED
+#include <AP_Common/AP_Common.h>
+#include <AP_HAL/Semaphores.h>
 
 class AP_Proximity_Backend
 {
 public:
     // constructor. This incorporates initialisation as well.
-	AP_Proximity_Backend(AP_Proximity &_frontend, AP_Proximity::Proximity_State &_state);
+	AP_Proximity_Backend(AP_Proximity &_frontend, AP_Proximity::Proximity_State &_state, AP_Proximity_Params &_params);
 
     // we declare a virtual destructor so that Proximity drivers can
     // override with a custom destructor if need be
@@ -32,15 +33,53 @@ public:
     // update the state structure
     virtual void update() = 0;
 
-    // get distance in meters in a particular direction in degrees (0 is forward, clockwise)
-    // returns true on successful read and places distance in distance
-    virtual bool get_horizontal_distance(float angle_deg, float &distance) const = 0;
+    // get maximum and minimum distances (in meters) of sensor
+    virtual float distance_max() const = 0;
+    virtual float distance_min() const = 0;
+
+    // get distance upwards in meters. returns true on success
+    virtual bool get_upward_distance(float &distance) const { return false; }
+
+    // handle mavlink messages
+    virtual void handle_msg(const mavlink_message_t &msg) {}
 
 protected:
 
     // set status and update valid_count
-    void set_status(AP_Proximity::Proximity_Status status);
+    void set_status(AP_Proximity::Status status);
+
+    // correct an angle (in degrees) based on the orientation and yaw correction parameters
+    float correct_angle_for_orientation(float angle_degrees) const;
+
+    // check if a reading should be ignored because it falls into an ignore area (check_for_ign_area should be sent as false if this check is not needed)
+    // pitch is the vertical body-frame angle (in degrees) to the obstacle (0=directly ahead, 90 is above the vehicle)
+    // yaw is the horizontal body-frame angle (in degrees) to the obstacle (0=directly ahead of the vehicle, 90 is to the right of the vehicle)
+    // Also checks if obstacle is near land or out of range
+    // angles should be in degrees and in the range of 0 to 360, distance should be in meteres
+    bool ignore_reading(float pitch, float yaw, float distance_m, bool check_for_ign_area = true) const;
+    bool ignore_reading(float yaw, float distance_m, bool check_for_ign_area = true) const { return ignore_reading(0.0f, yaw, distance_m, check_for_ign_area); }
+
+    // database helpers. All angles are in degrees
+    static bool database_prepare_for_push(Vector3f &current_pos, Matrix3f &body_to_ned);
+    // Note: "angle" refers to yaw (in body frame) towards the obstacle
+    static void database_push(float angle, float pitch, float distance);
+    static void database_push(float angle, float distance) {
+        database_push(angle, 0.0f, distance);
+    }
+
+    static void database_push(float angle, float distance, uint32_t timestamp_ms, const Vector3f &current_pos, const Matrix3f &body_to_ned) {
+        database_push(angle, 0.0f, distance, timestamp_ms, current_pos, body_to_ned);
+    };
+    static void database_push(float angle, float pitch, float distance, uint32_t timestamp_ms, const Vector3f &current_pos, const Matrix3f &body_to_ned);
+
+    // semaphore for access to shared frontend data
+    HAL_Semaphore _sem;
+
+    AP_Proximity::Type _backend_type;
 
     AP_Proximity &frontend;
     AP_Proximity::Proximity_State &state;   // reference to this instances state
+    AP_Proximity_Params &params;            // parameters for this backend
 };
+
+#endif // HAL_PROXIMITY_ENABLED

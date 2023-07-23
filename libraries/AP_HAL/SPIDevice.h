@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
  * Copyright (C) 2015-2016  Intel Corporation. All rights reserved.
  *
@@ -46,6 +45,12 @@ public:
     virtual bool transfer_fullduplex(const uint8_t *send, uint8_t *recv,
                                      uint32_t len) = 0;
 
+    /* 
+     *  send N bytes of clock pulses without taking CS. This is used
+     *  when initialising microSD interfaces over SPI
+    */
+    virtual bool clock_pulse(uint32_t len) { return false; }
+    
     /* See Device::get_semaphore() */
     virtual Semaphore *get_semaphore() override = 0;
 
@@ -56,6 +61,9 @@ public:
     /* See Device::adjust_periodic_callback() */
     virtual bool adjust_periodic_callback(
         PeriodicHandle h, uint32_t period_usec) override { return false; }
+
+    // setup a bus clock slowdown factor (optional interface)
+    virtual void set_slowdown(uint8_t slowdown) {}
 };
 
 class SPIDeviceManager {
@@ -64,6 +72,14 @@ public:
     {
         return nullptr;
     }
+
+    /* Return the number of SPI devices currently registered. */
+    virtual uint8_t get_count() { return 0; }
+
+    /* Get spi device name at @idx */
+    virtual const char *get_device_name(uint8_t idx) { return nullptr; }
+
+    virtual void set_register_rw_callback(const char* name, AP_HAL::Device::RegisterRWCb cb) {}
 };
 
 }

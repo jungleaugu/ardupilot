@@ -26,7 +26,8 @@
 class VRBoard_LED: public RGBLed {
 public:
 	VRBoard_LED();
+  bool init(void) override;
 
-    bool hw_init(void);
-    bool hw_set_rgb(uint8_t r, uint8_t g, uint8_t b);
+protected:
+    bool hw_set_rgb(uint8_t r, uint8_t g, uint8_t b) override;
 };

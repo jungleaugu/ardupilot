@@ -1,4 +1,3 @@
-// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -40,7 +39,7 @@ public:
     float slope(void);
 
     // reset - clear the filter
-    virtual void        reset();
+    virtual void        reset() override;
 
 private:
     bool            _new_data;

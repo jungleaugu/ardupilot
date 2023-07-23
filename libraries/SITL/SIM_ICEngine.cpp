@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -25,12 +24,15 @@ using namespace SITL;
 /*
   update engine state, returning power output from 0 to 1
  */
-float ICEngine::update(const Aircraft::sitl_input &input)
+float ICEngine::update(const struct sitl_input &input)
 {
     bool have_ignition = ignition_servo>=0;
     bool have_choke = choke_servo>=0;
     bool have_starter = starter_servo>=0;
     float throttle_demand = (input.servos[throttle_servo]-1000) * 0.001f;
+    if (throttle_reversed) {
+        throttle_demand = 1 - throttle_demand;
+    }
 
     state.ignition = have_ignition?input.servos[ignition_servo]>1700:true;
     state.choke = have_choke?input.servos[choke_servo]>1700:false;

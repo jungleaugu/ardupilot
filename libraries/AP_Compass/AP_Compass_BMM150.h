@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
  * Copyright (C) 2016  Intel Corporation. All rights reserved.
  *
@@ -17,6 +16,10 @@
  */
 #pragma once
 
+#include "AP_Compass_config.h"
+
+#if AP_COMPASS_BMM150_ENABLED
+
 #include <AP_Common/AP_Common.h>
 #include <AP_HAL/AP_HAL.h>
 #include <AP_HAL/I2CDevice.h>
@@ -25,34 +28,31 @@
 #include "AP_Compass.h"
 #include "AP_Compass_Backend.h"
 
+#define BMM150_I2C_ADDR_MIN 0x10
+#define BMM150_I2C_ADDR_MAX 0x13
+
 class AP_Compass_BMM150 : public AP_Compass_Backend
 {
 public:
-    static AP_Compass_Backend *probe(Compass &compass,
-                                     AP_HAL::OwnPtr<AP_HAL::I2CDevice> dev);
+    static AP_Compass_Backend *probe(AP_HAL::OwnPtr<AP_HAL::I2CDevice> dev, bool force_external, enum Rotation rotation);
 
-    bool init() override;
     void read() override;
 
     static constexpr const char *name = "BMM150";
 
 private:
-    AP_Compass_BMM150(Compass &compass, AP_HAL::OwnPtr<AP_HAL::Device> dev);
+    AP_Compass_BMM150(AP_HAL::OwnPtr<AP_HAL::Device> dev, bool force_external, enum Rotation rotation);
 
     /**
      * Device periodic callback to read data from the sensor.
      */
-    bool _update();
+    bool init();
+    void _update();
     bool _load_trim_values();
-    int16_t _compensate_xy(int16_t xy, uint32_t rhall, int32_t txy1, int32_t txy2);
-    int16_t _compensate_z(int16_t z, uint32_t rhall);
+    int16_t _compensate_xy(int16_t xy, uint32_t rhall, int32_t txy1, int32_t txy2) const;
+    int16_t _compensate_z(int16_t z, uint32_t rhall) const;
 
     AP_HAL::OwnPtr<AP_HAL::Device> _dev;
-
-    AP_HAL::Semaphore *_accum_sem;
-    Vector3f _mag_accum = Vector3f();
-    uint32_t _accum_count = 0;
-    uint32_t _last_update_timestamp = 0;
 
     uint8_t _compass_instance;
 
@@ -69,4 +69,10 @@ private:
         int8_t xy2;
         uint16_t xyz1;
     } _dig;
+
+    uint32_t _last_read_ms;
+    enum Rotation _rotation;
+    bool _force_external;
 };
+
+#endif  // AP_COMPASS_BMM150_ENABLED
