@@ -8,7 +8,7 @@
  *  Code in this file implements the navigation commands
  */
 bool ModeAuto::init(bool ignore_checks) {
-     if (!sub.position_ok() || sub.mission.num_commands() < 2) {
+     if (!sub.position_ok() || !sub.mission.present()) {
         return false;
     }
 
@@ -50,7 +50,7 @@ void ModeAuto::run()
         break;
 
     case Auto_NavGuided:
-#if NAV_GUIDED == ENABLED
+#if NAV_GUIDED
         auto_nav_guided_run();
 #endif
         break;
@@ -88,6 +88,7 @@ void ModeAuto::auto_wp_start(const Location& dest_loc)
     // send target to waypoint controller
     if (!sub.wp_nav.set_wp_destination_loc(dest_loc)) {
         // failure to set destination can only be because of missing terrain data
+        gcs().send_text(MAV_SEVERITY_WARNING, "Terrain data (rangefinder) not available");
         sub.failsafe_terrain_on_event();
         return;
     }
@@ -186,8 +187,8 @@ void ModeAuto::auto_circle_movetoedge_start(const Location &circle_center, float
 
     // check our distance from edge of circle
     Vector3f circle_edge_neu;
-    sub.circle_nav.get_closest_point_on_circle(circle_edge_neu);
-    float dist_to_edge = (inertial_nav.get_position_neu_cm() - circle_edge_neu).length();
+    float dist_to_edge;
+    sub.circle_nav.get_closest_point_on_circle(circle_edge_neu, dist_to_edge);
 
     // if more than 3m then fly to edge
     if (dist_to_edge > 300.0f) {
@@ -251,7 +252,7 @@ void ModeAuto::auto_circle_run()
     attitude_control->input_euler_angle_roll_pitch_yaw(channel_roll->get_control_in(), channel_pitch->get_control_in(), sub.circle_nav.get_yaw(), true);
 }
 
-#if NAV_GUIDED == ENABLED
+#if NAV_GUIDED
 // auto_nav_guided_start - hand over control to external navigation controller in AUTO mode
 void ModeAuto::auto_nav_guided_start()
 {
@@ -345,7 +346,7 @@ void ModeAuto::auto_loiter_run()
 // set_auto_yaw_look_at_heading - sets the yaw look at heading for auto mode
 void ModeAuto::set_auto_yaw_look_at_heading(float angle_deg, float turn_rate_dps, int8_t direction, uint8_t relative_angle)
 {
-    // get current yaw target
+    // get current yaw
     int32_t curr_yaw_target = attitude_control->get_att_target_euler_cd().z;
 
     // get final angle, 1 = Relative, 0 = Absolute
@@ -357,24 +358,32 @@ void ModeAuto::set_auto_yaw_look_at_heading(float angle_deg, float turn_rate_dps
         if (direction < 0) {
             angle_deg = -angle_deg;
         }
-        sub.yaw_look_at_heading = wrap_360_cd((angle_deg*100+curr_yaw_target));
+        sub.yaw_look_at_heading = wrap_360_cd((angle_deg * 100 + curr_yaw_target));
     }
 
     // get turn speed
-    // TODO actually implement this, right now, yaw_look_at_heading_slew is unused
-    // see AP_Float _slew_yaw in AC_AttitudeControl
     if (is_zero(turn_rate_dps)) {
         // default to regular auto slew rate
         sub.yaw_look_at_heading_slew = AUTO_YAW_SLEW_RATE;
     } else {
-        int32_t turn_rate = (wrap_180_cd(sub.yaw_look_at_heading - curr_yaw_target) / 100) / turn_rate_dps;
-        sub.yaw_look_at_heading_slew = constrain_int32(turn_rate, 1, 360);    // deg / sec
+        sub.yaw_look_at_heading_slew = MIN(turn_rate_dps, AUTO_YAW_SLEW_RATE);    // deg / sec
     }
 
     // set yaw mode
     set_auto_yaw_mode(AUTO_YAW_LOOK_AT_HEADING);
 
     // TO-DO: restore support for clockwise and counter clockwise rotation held in cmd.content.yaw.direction.  1 = clockwise, -1 = counterclockwise
+}
+
+
+// sets the desired yaw rate
+void ModeAuto::set_yaw_rate(float turn_rate_dps)
+{    
+    // set sub to desired yaw rate
+    sub.yaw_look_at_heading_slew = MIN(turn_rate_dps, AUTO_YAW_SLEW_RATE);    // deg / sec
+
+    // set yaw mode
+    set_auto_yaw_mode(AUTO_YAW_RATE);
 }
 
 // set_auto_yaw_roi - sets the yaw to look at roi for auto mode
@@ -386,9 +395,7 @@ void ModeAuto::set_auto_yaw_roi(const Location &roi_location)
         set_auto_yaw_mode(get_default_auto_yaw_mode(false));
 #if HAL_MOUNT_ENABLED
         // switch off the camera tracking if enabled
-        if (sub.camera_mount.get_mode() == MAV_MOUNT_MODE_GPS_POINT) {
-            sub.camera_mount.set_mode_to_default();
-        }
+        sub.camera_mount.clear_roi_target();
 #endif  // HAL_MOUNT_ENABLED
     } else {
 #if HAL_MOUNT_ENABLED
@@ -419,6 +426,7 @@ void ModeAuto::set_auto_yaw_roi(const Location &roi_location)
 // Return true if it is possible to recover from a rangefinder failure
 bool ModeAuto::auto_terrain_recover_start()
 {
+#if AP_RANGEFINDER_ENABLED
     // Check rangefinder status to see if recovery is possible
     switch (sub.rangefinder.status_orient(ROTATION_PITCH_270)) {
 
@@ -455,6 +463,9 @@ bool ModeAuto::auto_terrain_recover_start()
 
     gcs().send_text(MAV_SEVERITY_WARNING, "Attempting auto failsafe recovery");
     return true;
+#else
+    return false;
+#endif
 }
 
 // Attempt recovery from terrain failsafe
@@ -463,7 +474,6 @@ bool ModeAuto::auto_terrain_recover_start()
 void ModeAuto::auto_terrain_recover_run()
 {
     float target_climb_rate = 0;
-    static uint32_t rangefinder_recovery_ms = 0;
 
     // if not armed set throttle to zero and exit immediately
     if (!motors.armed()) {
@@ -476,6 +486,8 @@ void ModeAuto::auto_terrain_recover_run()
         return;
     }
 
+#if AP_RANGEFINDER_ENABLED
+    static uint32_t rangefinder_recovery_ms = 0;
     switch (sub.rangefinder.status_orient(ROTATION_PITCH_270)) {
 
     case RangeFinder::Status::OutOfRangeLow:
@@ -522,6 +534,10 @@ void ModeAuto::auto_terrain_recover_run()
         rangefinder_recovery_ms = 0;
         return;
     }
+#else
+    gcs().send_text(MAV_SEVERITY_CRITICAL, "Terrain failsafe recovery failure: No Rangefinder!");
+    sub.failsafe_terrain_act();
+#endif
 
     // exit on failure (timeout)
     if (AP_HAL::millis() > sub.fs_terrain_recover_start_ms + FS_TERRAIN_RECOVER_TIMEOUT_MS) {

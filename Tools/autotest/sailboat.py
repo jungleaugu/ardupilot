@@ -5,14 +5,12 @@ AP_FLAKE8_CLEAN
 
 '''
 
-from __future__ import print_function
-
 import os
 
 from rover import AutoTestRover
 
-from common import AutoTestTimeoutException
-from common import PreconditionFailedException
+from vehicle_test_suite import AutoTestTimeoutException
+from vehicle_test_suite import PreconditionFailedException
 
 # get location of scripts
 testdir = os.path.dirname(os.path.realpath(__file__))

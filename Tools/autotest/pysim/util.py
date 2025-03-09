@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 '''
 AP_FLAKE8_CLEAN
 '''
@@ -27,24 +25,6 @@ RADIUS_OF_EARTH = 6378100.0  # in meters
 
 # List of open terminal windows for macosx
 windowID = []
-
-
-def m2ft(x):
-    """Meters to feet."""
-    return float(x) / 0.3048
-
-
-def ft2m(x):
-    """Feet to meters."""
-    return float(x) * 0.3048
-
-
-def kt2mps(x):
-    return x * 0.514444444
-
-
-def mps2kt(x):
-    return x / 0.514444444
 
 
 def topdir():
@@ -434,19 +414,18 @@ def start_SITL(binary,
                gdb=False,
                gdb_no_tui=False,
                wipe=False,
-               synthetic_clock=True,
                home=None,
                model=None,
                speedup=1,
                sim_rate_hz=None,
-               defaults_filepath=None,
+               defaults_filepath=[],
                unhide_parameters=False,
                gdbserver=False,
                breakpoints=[],
                disable_breakpoints=False,
                customisations=[],
                lldb=False,
-               enable_fgview_output=False,
+               enable_fgview=False,
                supplementary=False,
                stdout_prefix=None):
 
@@ -506,7 +485,7 @@ def start_SITL(binary,
                         '-d',
                         '-m',
                         '-S', 'ardupilot-gdb',
-                        'gdb', '-x', '/tmp/x.gdb', binary, '--args'])
+                        'gdb', '--cd', os.getcwd(), '-x', '/tmp/x.gdb', binary, '--args'])
     elif lldb:
         f = open("/tmp/x.lldb", "w")
         for breakingpoint in breakpoints:
@@ -524,33 +503,42 @@ def start_SITL(binary,
             raise RuntimeError("DISPLAY was not set")
 
     cmd.append(binary)
+
+    if defaults_filepath is None:
+        defaults_filepath = []
+    if not isinstance(defaults_filepath, list):
+        defaults_filepath = [defaults_filepath]
+    defaults = [reltopdir(path) for path in defaults_filepath]
+
     if not supplementary:
         if wipe:
             cmd.append('-w')
-        if synthetic_clock:
-            cmd.append('-S')
         if home is not None:
             cmd.extend(['--home', home])
         cmd.extend(['--model', model])
         if speedup is not None and speedup != 1:
-            cmd.extend(['--speedup', str(speedup)])
+            ntf = tempfile.NamedTemporaryFile(mode="w", delete=False)
+            print(f"SIM_SPEEDUP {speedup}", file=ntf)
+            ntf.close()
+            # prepend it so that a caller can override the speedup in
+            # passed-in defaults:
+            defaults = [ntf.name] + defaults
         if sim_rate_hz is not None:
             cmd.extend(['--rate', str(sim_rate_hz)])
-        if defaults_filepath is not None:
-            if type(defaults_filepath) == list:
-                defaults = [reltopdir(path) for path in defaults_filepath]
-                if len(defaults):
-                    cmd.extend(['--defaults', ",".join(defaults)])
-            else:
-                cmd.extend(['--defaults', reltopdir(defaults_filepath)])
         if unhide_parameters:
             cmd.extend(['--unhide-groups'])
         # somewhere for MAVProxy to connect to:
-        cmd.append('--uartC=tcp:2')
-        if not enable_fgview_output:
-            cmd.append("--disable-fgview")
+        cmd.append('--serial1=tcp:2')
+        if enable_fgview:
+            cmd.append("--enable-fgview")
+
+    if len(defaults):
+        cmd.extend(['--defaults', ",".join(defaults)])
 
     cmd.extend(customisations)
+
+    if "--defaults" in customisations:
+        raise ValueError("--defaults must be passed in via defaults_filepath keyword argument, not as part of customisation list")  # noqa
 
     pexpect_logfile_prefix = stdout_prefix
     if pexpect_logfile_prefix is None:
@@ -669,6 +657,20 @@ def start_MAVProxy_SITL(atype,
     print("Running: %s" % cmd_as_shell(cmd))
 
     ret = pexpect.spawn(cmd[0], cmd[1:], logfile=logfile, encoding=ENCODING, timeout=pexpect_timeout, env=env)
+    ret.delaybeforesend = 0
+    pexpect_autoclose(ret)
+    return ret
+
+
+def start_PPP_daemon(ips, sockaddr):
+    """Start pppd for networking"""
+
+    global close_list
+    cmd = "sudo pppd socket %s debug noauth nodetach %s" % (sockaddr, ips)
+    cmd = cmd.split()
+    print("Running: %s" % cmd_as_shell(cmd))
+
+    ret = pexpect.spawn(cmd[0], cmd[1:], logfile=sys.stdout, encoding=ENCODING, timeout=30)
     ret.delaybeforesend = 0
     pexpect_autoclose(ret)
     return ret
@@ -812,6 +814,14 @@ def load_local_module(fname):
         import imp
         ret = imp.load_source("local_module", fname)
     return ret
+
+
+def get_git_hash(short=False):
+    short_v = "--short=8 " if short else ""
+    githash = run_cmd(f'git rev-parse {short_v}HEAD', output=True, directory=reltopdir('.')).strip()
+    if sys.version_info.major >= 3:
+        githash = githash.decode('utf-8')
+    return githash
 
 
 if __name__ == "__main__":

@@ -12,11 +12,13 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#pragma GCC optimize("Os")
+
 #include "AP_Generator_Backend.h"
 
 #if HAL_GENERATOR_ENABLED
 
-// Base class consructor
+// Base class constructor
 AP_Generator_Backend::AP_Generator_Backend(AP_Generator& frontend) :
     _frontend(frontend)
 {
